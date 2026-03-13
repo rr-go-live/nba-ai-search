@@ -1,0 +1,206 @@
+"""
+tools.py
+========
+PURPOSE: Claude tool schemas + executor for the NBA Stats Explorer.
+
+TOOLS:
+  search_player        — resolve player name/nickname → player_id + headshot
+  search_team          — resolve team name → abbreviation
+  get_stats_vs_team    — player stats against a specific opponent across seasons
+  get_conditional_stats — stats split by condition players active/inactive
+                          covers: H2H, single inactive, multi-player inactive
+  get_career_stats     — full career season-by-season + playoff breakdown
+
+TOOL ROUTING GUIDE (for Claude):
+  ┌─────────────────────────────────┬────────────────────────────┐
+  │ Query pattern                   │ Tool                       │
+  ├─────────────────────────────────┼────────────────────────────┤
+  │ "X vs [team] since YYYY"        │ get_stats_vs_team          │
+  │ "X H2H with Y" / "X vs Y H2H"  │ get_conditional_stats      │
+  │                                 │   all_active=True          │
+  │ "X when Y inactive"             │ get_conditional_stats      │
+  │                                 │   all_active=False, 1 id   │
+  │ "X when Y and Z inactive"       │ get_conditional_stats      │
+  │                                 │   all_active=False, 2 ids  │
+  │ "X career stats"                │ get_career_stats           │
+  └─────────────────────────────────┴────────────────────────────┘
+"""
+
+import logging
+import nba_stats_client as nba
+
+logger = logging.getLogger(__name__)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tool schemas
+# ─────────────────────────────────────────────────────────────────────────────
+
+TOOL_DEFINITIONS = [
+    {
+        "name": "search_player",
+        "description": (
+            "Look up an NBA player by name or nickname → returns player_id and headshot_url. "
+            "Call this FIRST before any stat query involving a player. "
+            "Handles nicknames: LeBron, Steph, KD, Giannis, Joker, Wemby, Tatum, Brown, etc."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Player name or nickname"}
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "search_team",
+        "description": (
+            "Look up an NBA team → returns 3-letter abbreviation used for opponent filtering. "
+            "Handles: Celtics, Dubs, Mavs, Cavs, Clips, Sixers, etc."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Team name, city, nickname, or abbreviation"}
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "get_stats_vs_team",
+        "description": (
+            "Player per-game averages + game log against a specific opponent across seasons.\n"
+            "Use for: 'LeBron vs Celtics since 2015', 'Curry career vs Clippers', "
+            "'Giannis vs Heat in playoffs'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_id":     {"type": "integer", "description": "NBA player ID"},
+                "opponent_abbr": {"type": "string",  "description": "3-letter team abbr e.g. 'BOS'"},
+                "season_from":   {"type": "string",  "description": "Start season e.g. '2015-16'"},
+                "season_to":     {"type": "string",  "description": "End season e.g. '2024-25'"},
+                "season_type":   {"type": "string",  "description": "'Regular Season' or 'Playoffs'"},
+            },
+            "required": ["player_id", "opponent_abbr"],
+        },
+    },
+    {
+        "name": "get_conditional_stats",
+        "description": (
+            "Stats split by whether condition players are ACTIVE or INACTIVE in the same game.\n\n"
+            "H2H (Head-to-Head) — all_active=true:\n"
+            "  'LeBron vs Curry H2H' or 'LeBron head to head with Curry'\n"
+            "  → LeBron's stats in games where Curry ALSO played.\n"
+            "  → Set condition_player_ids=[curry_id], all_active=true.\n"
+            "  → Also set opponent_abbr to the other player's team.\n"
+            "  → Call this TWICE (once per player) to get both sides of H2H.\n\n"
+            "Single inactive teammate — all_active=false:\n"
+            "  'Tatum stats when Jaylen Brown is inactive'\n"
+            "  → condition_player_ids=[brown_id], all_active=false.\n\n"
+            "Multiple inactive teammates — all_active=false, multiple IDs:\n"
+            "  'Tatum stats when Brown AND Porzingis are both inactive'\n"
+            "  → condition_player_ids=[brown_id, porzingis_id], all_active=false.\n"
+            "  → Finds games where NEITHER player appeared (complement of union).\n\n"
+            "Returns primary_averages (the queried condition) and comparison_averages "
+            "(the opposite condition) for side-by-side display."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_id":            {"type": "integer", "description": "Primary player ID"},
+                "condition_player_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "List of condition player IDs (1 for single, 2+ for multi-inactive)"
+                },
+                "all_active":           {"type": "boolean", "description": "true=H2H/all active, false=inactive split"},
+                "season_from":          {"type": "string",  "description": "Start season"},
+                "season_to":            {"type": "string",  "description": "End season"},
+                "opponent_abbr":        {"type": "string",  "description": "Optional opponent team filter (use for H2H)"},
+                "season_type":          {"type": "string",  "description": "'Regular Season' or 'Playoffs'"},
+            },
+            "required": ["player_id", "condition_player_ids", "all_active"],
+        },
+    },
+    {
+        "name": "get_career_stats",
+        "description": (
+            "Full career stats: season-by-season regular season + playoff averages.\n"
+            "Each season row includes fg3a (three-point attempts per game) for volume context.\n"
+            "Use for: 'Tatum career stats', 'Curry season-by-season', 'LeBron playoff career'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_id":   {"type": "integer", "description": "NBA player ID"},
+                "season_type": {"type": "string",  "description": "'Regular Season' (default) or 'Playoffs'"},
+            },
+            "required": ["player_id"],
+        },
+    },
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tool executor
+# ─────────────────────────────────────────────────────────────────────────────
+
+def execute_tool(tool_name: str, tool_input: dict) -> dict:
+    logger.info(f"Tool: {tool_name} | {tool_input}")
+
+    if tool_name == "search_player":
+        player = nba.search_player(tool_input["name"])
+        if player:
+            info = nba.get_player_info(player["id"])
+            return {
+                "found":        True,
+                "player_id":    player["id"],
+                "full_name":    player["full_name"],
+                "is_active":    player["is_active"],
+                "team":         info.get("team", ""),
+                "team_abbr":    info.get("team_abbr", ""),
+                "position":     info.get("position", ""),
+                "height":       info.get("height", ""),
+                "jersey":       info.get("jersey", ""),
+                "headshot_url": info.get("headshot_url", nba.headshot_url(player["id"])),
+            }
+        return {"found": False, "error": f"Player '{tool_input['name']}' not found."}
+
+    elif tool_name == "search_team":
+        team = nba.search_team(tool_input["name"])
+        if team:
+            return {
+                "found":        True,
+                "team_id":      team["id"],
+                "full_name":    team["full_name"],
+                "abbreviation": team["abbreviation"],
+                "nickname":     team["nickname"],
+                "city":         team["city"],
+            }
+        return {"found": False, "error": f"Team '{tool_input['name']}' not found."}
+
+    elif tool_name == "get_stats_vs_team":
+        return nba.get_player_vs_team_stats(
+            player_id     = tool_input["player_id"],
+            opponent_abbr = tool_input["opponent_abbr"],
+            season_from   = tool_input.get("season_from", "2015-16"),
+            season_to     = tool_input.get("season_to",   nba.DEFAULT_SEASON),
+            season_type   = tool_input.get("season_type", "Regular Season"),
+        )
+
+    elif tool_name == "get_conditional_stats":
+        return nba.get_player_conditional_stats(
+            player_id            = tool_input["player_id"],
+            condition_player_ids = tool_input["condition_player_ids"],
+            all_active           = tool_input["all_active"],
+            season_from          = tool_input.get("season_from", nba.DEFAULT_SEASON),
+            season_to            = tool_input.get("season_to",   nba.DEFAULT_SEASON),
+            opponent_abbr        = tool_input.get("opponent_abbr", ""),
+            season_type          = tool_input.get("season_type", "Regular Season"),
+        )
+
+    elif tool_name == "get_career_stats":
+        return nba.get_player_career_stats(tool_input["player_id"])
+
+    else:
+        return {"error": f"Unknown tool: {tool_name}"}

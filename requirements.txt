@@ -1,0 +1,9 @@
+# NBA Stats Explorer — dependencies
+# Install: pip install -r requirements.txt
+
+flask>=3.0.0
+flask-cors>=4.0.0
+nba_api>=1.4.0
+anthropic>=0.25.0
+python-dotenv>=1.0.0
+pandas>=2.0.0

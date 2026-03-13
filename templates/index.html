@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>NBA Stats Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,400;9..144,700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #080c12;
+  --surface: #0e1520;
+  --surface2: #141d2b;
+  --border: rgba(255,255,255,0.07);
+  --accent: #f7941d;
+  --win: #22c55e;
+  --loss: #ef4444;
+  --text: #e8edf5;
+  --muted: #6b7a94;
+  --tp: #f7941d;
+  --ts: #ffffff;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; min-height: 100vh; overflow-x: hidden; }
+.app { max-width: 1140px; margin: 0 auto; padding: 0 24px; }
+
+/* Header */
+header { display: flex; align-items: center; justify-content: space-between; padding: 28px 0 20px; border-bottom: 1px solid var(--border); }
+.logo { font-family: 'Barlow Condensed', sans-serif; font-size: 1.5rem; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.logo span { color: var(--accent); }
+.logo-dot { display: inline-block; width: 8px; height: 8px; background: var(--accent); border-radius: 50%; margin-left: 4px; animation: pulse-dot 2s ease-in-out infinite; }
+@keyframes pulse-dot { 0%,100% { transform: scale(1); } 50% { transform: scale(1.4); } }
+.header-tag { font-size: .65rem; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; border: 1px solid var(--border); padding: 4px 10px; border-radius: 20px; }
+
+/* Search */
+.search-section { padding: 40px 0 32px; }
+.search-label { font-family: 'Barlow Condensed', sans-serif; font-size: 2.8rem; font-weight: 800; line-height: 1.1; margin-bottom: 20px; }
+.search-label em { font-style: normal; color: var(--accent); }
+.search-box { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: border-color .2s, box-shadow .2s; }
+.search-box:focus-within { border-color: rgba(247,148,29,.4); box-shadow: 0 0 0 3px rgba(247,148,29,.08); }
+#query-input { flex: 1; background: transparent; border: none; outline: none; padding: 18px 22px; color: var(--text); font-family: 'DM Mono', monospace; font-size: .9rem; caret-color: var(--accent); }
+#query-input::placeholder { color: var(--muted); }
+#submit-btn { background: var(--accent); border: none; cursor: pointer; padding: 0 28px; font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #000; transition: background .15s; display: flex; align-items: center; gap: 8px; }
+#submit-btn:hover { background: #ffaa40; }
+#submit-btn.loading { background: #444; cursor: not-allowed; }
+.suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.sug { font-size: .72rem; color: var(--muted); cursor: pointer; border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; transition: all .15s; white-space: nowrap; }
+.sug:hover { color: var(--tp); border-color: rgba(247,148,29,.4); }
+
+/* Progress */
+#progress-panel { display: none; margin-bottom: 28px; padding: 20px 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+#progress-panel.active { display: block; }
+.progress-title { font-family: 'Barlow Condensed', sans-serif; font-size: .7rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+#progress-steps { display: flex; flex-direction: column; gap: 6px; }
+.step { font-size: .78rem; color: var(--muted); display: flex; gap: 10px; animation: step-in .3s ease both; }
+.step.hi { color: var(--text); }
+@keyframes step-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+
+/* Results */
+#results { display: none; }
+#results.visible { display: block; animation: fade-up .4s ease both; }
+@keyframes fade-up { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+
+/* Player header */
+.player-header { display: flex; align-items: flex-end; gap: 20px; padding: 28px 0 22px; border-bottom: 1px solid var(--border); margin-bottom: 28px; flex-wrap: wrap; }
+.phs { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid var(--tp); flex-shrink: 0; background: var(--surface2); }
+.player-name { font-family: 'Barlow Condensed', sans-serif; font-size: 3rem; font-weight: 900; line-height: 1; }
+.opp-name { font-family: 'Barlow Condensed', sans-serif; font-size: 2.4rem; font-weight: 800; color: var(--tp); line-height: 1; }
+.vs-badge { font-family: 'Barlow Condensed', sans-serif; font-size: .9rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px; align-self: center; }
+.meta-row { display: flex; gap: 18px; margin-top: 6px; flex-wrap: wrap; }
+.meta-tag { font-size: .68rem; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
+.meta-tag span { color: var(--text); }
+
+/* Insight */
+.insight-block { background: var(--surface); border-left: 3px solid var(--tp); padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 28px; font-family: 'Fraunces', serif; font-size: 1rem; line-height: 1.65; }
+
+/* Stat cards */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 12px; margin-bottom: 28px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 14px; text-align: center; transition: transform .15s; animation: card-in .4s ease both; }
+.stat-card:hover { transform: translateY(-2px); }
+@keyframes card-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.sc-label { font-size: .58rem; letter-spacing: .15em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.sc-value { font-family: 'Barlow Condensed', sans-serif; font-size: 2.4rem; font-weight: 900; line-height: 1; }
+.sc-value.accent { color: var(--tp); }
+
+/* H2H */
+.h2h-wrap { display: grid; grid-template-columns: 1fr 44px 1fr; gap: 0; margin-bottom: 28px; align-items: start; }
+.h2h-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 18px; }
+.h2h-divider-col { display: flex; align-items: center; justify-content: center; padding-top: 60px; }
+.h2h-vs-circle { font-family: 'Barlow Condensed', sans-serif; font-size: 1.2rem; font-weight: 900; color: var(--muted); border: 1px solid var(--border); border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+.h2h-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.h2h-hs { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; }
+.h2h-pname { font-family: 'Barlow Condensed', sans-serif; font-size: 1.35rem; font-weight: 800; line-height: 1.1; }
+.h2h-team-lbl { font-size: .62rem; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
+.h2h-stat { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); }
+.h2h-stat:last-child { border-bottom: none; }
+.h2h-slbl { font-size: .64rem; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
+.h2h-sval { font-family: 'Barlow Condensed', sans-serif; font-size: 1.45rem; font-weight: 700; }
+.h2h-sval.better { color: var(--win); }
+
+/* Split (conditional) */
+.split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px; }
+.split-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+.split-card.primary { border-top: 3px solid var(--tp); }
+.split-card.secondary { border-top: 3px solid rgba(255,255,255,.12); }
+.split-title { font-family: 'Barlow Condensed', sans-serif; font-size: .7rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--tp); margin-bottom: 14px; }
+.split-title.dim { color: var(--muted); }
+.split-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
+.split-row .sl { font-size: .66rem; color: var(--muted); }
+.split-row .sv { font-family: 'Barlow Condensed', sans-serif; font-size: 1.3rem; font-weight: 700; }
+
+/* Condition pills */
+.cond-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; align-items: center; }
+.cond-pill { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+.cond-pill img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+.pill-name { font-size: .78rem; font-weight: 500; }
+.pill-status { font-size: .6rem; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
+
+/* Donuts */
+.donuts-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px; }
+.donut-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 14px; display: flex; flex-direction: column; align-items: center; }
+.donut-lbl { font-size: .6rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; text-align: center; }
+.donut-canvas-wrap { position: relative; height: 130px; width: 130px; }
+.donut-val { font-family: 'Barlow Condensed', sans-serif; font-size: 1.7rem; font-weight: 900; color: var(--tp); margin-top: 6px; }
+.donut-sub { font-size: .6rem; color: var(--muted); margin-top: 2px; }
+
+/* Charts */
+.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
+.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+.chart-card.full { grid-column: 1 / -1; }
+.chart-title { font-size: .62rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+.chart-wrap { position: relative; height: 220px; }
+.chart-wrap.tall { height: 280px; }
+
+/* Log */
+.log-section { margin-bottom: 48px; }
+.log-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.log-title { font-family: 'Barlow Condensed', sans-serif; font-size: .7rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.log-count { font-size: .68rem; color: var(--muted); }
+.toggle-btns { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.toggle-btns button { background: transparent; border: none; cursor: pointer; padding: 5px 12px; font-family: 'DM Mono', monospace; font-size: .68rem; color: var(--muted); transition: all .15s; }
+.toggle-btns button.on { background: var(--tp); color: #000; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+thead th { padding: 8px 10px; text-align: left; font-size: .58rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap; user-select: none; }
+thead th:hover { color: var(--text); }
+.s-asc::after { content: ' \2191'; color: var(--tp); }
+.s-desc::after { content: ' \2193'; color: var(--tp); }
+tbody tr { border-bottom: 1px solid rgba(255,255,255,.03); transition: background .1s; }
+tbody tr:hover { background: rgba(255,255,255,.02); }
+tbody td { padding: 8px 10px; white-space: nowrap; }
+.rw { color: var(--win); font-weight: 500; }
+.rl { color: var(--loss); }
+.pts-cell { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 700; color: var(--tp); }
+.pp { color: var(--win); }
+.pm { color: var(--loss); }
+.pz { color: var(--muted); }
+.season-tag { font-size: .58rem; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 2px 5px; }
+.highlight-row { background: rgba(247,148,29,.05); }
+.error-box { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); border-radius: 10px; padding: 16px 20px; color: #fca5a5; margin-bottom: 20px; }
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(0,0,0,.3); border-top-color: #000; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 700px) {
+  .search-label { font-size: 1.8rem; }
+  .player-name { font-size: 2rem; }
+  .charts-row { grid-template-columns: 1fr; }
+  .split-grid { grid-template-columns: 1fr; }
+  .h2h-wrap { grid-template-columns: 1fr; }
+  .donuts-row { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div class="logo">NBA<span>Stats</span><span class="logo-dot"></span></div>
+  <div class="header-tag">Powered by Claude AI</div>
+</header>
+
+<section class="search-section">
+  <h1 class="search-label">Ask anything about <em>NBA stats</em></h1>
+  <div class="search-box">
+    <input id="query-input" type="text"
+      placeholder="e.g. Tatum when Brown and Porzingis are inactive, or LeBron vs Curry H2H"
+      autocomplete="off">
+    <button id="submit-btn" onclick="submitQuery()">
+      <span id="btn-text">Search</span>
+      <span id="btn-spin" style="display:none"><span class="spinner"></span></span>
+    </button>
+  </div>
+  <div class="suggestions">
+    <span class="sug" onclick="setQ(this)">LeBron stats vs Celtics since 2015</span>
+    <span class="sug" onclick="setQ(this)">Tatum when Jaylen Brown is inactive</span>
+    <span class="sug" onclick="setQ(this)">Tatum when Brown and Porzingis are both inactive</span>
+    <span class="sug" onclick="setQ(this)">LeBron vs Curry H2H career</span>
+    <span class="sug" onclick="setQ(this)">Jayson Tatum career playoff stats</span>
+    <span class="sug" onclick="setQ(this)">Curry vs Nuggets when Jokic active vs inactive</span>
+  </div>
+</section>
+
+<div id="progress-panel">
+  <div class="progress-title">Analyzing your query</div>
+  <div id="progress-steps"></div>
+</div>
+
+<div id="results"></div>
+
+</div><!-- .app -->
+
+<script>
+// ─── Team colors (primary, secondary) ──────────────────────────────────────
+var TC = {
+  ATL:['#E03A3E','#C1D32F'], BOS:['#007A33','#BA9653'], BKN:['#FFFFFF','#000000'],
+  CHA:['#00788C','#1D1160'], CHI:['#CE1141','#000000'], CLE:['#FDBB30','#860038'],
+  DAL:['#00538C','#B8C4CA'], DEN:['#FEC524','#0E2240'], DET:['#1D42BA','#C8102E'],
+  GSW:['#FFC72C','#1D428A'], HOU:['#CE1141','#C4CED4'], IND:['#FDBB30','#002D62'],
+  LAC:['#C8102E','#1D428A'], LAL:['#FDB927','#552583'], MEM:['#5D76A9','#12173F'],
+  MIA:['#98002E','#F9A01B'], MIL:['#00471B','#EEE1C6'], MIN:['#78BE20','#0C2340'],
+  NOP:['#C8102E','#0C2340'], NYK:['#F58426','#006BB6'], OKC:['#EF3B24','#007AC1'],
+  ORL:['#0077C0','#C4CED4'], PHI:['#ED174C','#006BB6'], PHX:['#E56020','#1D1160'],
+  POR:['#E03A3E','#000000'], SAC:['#5A2D81','#63727A'], SAS:['#C4CED4','#000000'],
+  TOR:['#CE1141','#000000'], UTA:['#00471B','#002B5C'], WAS:['#E31837','#002B5C']
+};
+
+function teamColor(abbr) {
+  if (!abbr) return '#f7941d';
+  var entry = TC[abbr.toUpperCase()];
+  return entry ? entry[0] : '#f7941d';
+}
+
+function applyTeamColor(abbr) {
+  document.documentElement.style.setProperty('--tp', teamColor(abbr));
+}
+
+// ─── Utilities ──────────────────────────────────────────────────────────────
+var charts = {};
+var logA = [], logB = [];
+var sortState = { col: null, dir: 'desc' };
+
+function setQ(el) { document.getElementById('query-input').value = el.textContent.trim(); }
+
+function setLoading(on) {
+  document.getElementById('submit-btn').classList.toggle('loading', on);
+  document.getElementById('btn-text').style.display = on ? 'none' : '';
+  document.getElementById('btn-spin').style.display = on ? '' : 'none';
+}
+
+function addStep(icon, txt, hi) {
+  var el = document.createElement('div');
+  el.className = hi ? 'step hi' : 'step';
+  el.innerHTML = '<span>' + icon + '</span><span>' + txt + '</span>';
+  document.getElementById('progress-steps').appendChild(el);
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fmt(v, d) {
+  d = (d === undefined) ? 1 : d;
+  if (v === null || v === undefined) return '0.0';
+  var n = parseFloat(v);
+  return isNaN(n) ? '0.0' : n.toFixed(d);
+}
+
+function fmtInt(v) {
+  if (v === null || v === undefined) return '0';
+  var n = parseInt(v);
+  return isNaN(n) ? '0' : String(n);
+}
+
+function fmtPct(v) { return fmt(v) + '%'; }
+
+function hsUrl(id) {
+  return 'https://cdn.nba.com/headshots/nba/latest/1040x760/' + id + '.png';
+}
+
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+// ─── Base chart options ─────────────────────────────────────────────────────
+function baseOpts() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      x: {
+        grid: { color: 'rgba(255,255,255,.04)' },
+        ticks: { color: '#6b7a94', font: { size: 10 } }
+      },
+      y: {
+        grid: { color: 'rgba(255,255,255,.04)' },
+        ticks: { color: '#6b7a94', font: { size: 10 } }
+      }
+    }
+  };
+}
+
+function tooltipOpts() {
+  return {
+    backgroundColor: '#0e1520',
+    borderColor: 'rgba(255,255,255,.08)',
+    borderWidth: 1,
+    titleColor: '#e8edf5',
+    bodyColor: '#e8edf5'
+  };
+}
+
+// ─── Query submission ────────────────────────────────────────────────────────
+var currentSrc = null;
+
+function submitQuery() {
+  var query = document.getElementById('query-input').value.trim();
+  if (!query) return;
+  if (currentSrc) { currentSrc.close(); currentSrc = null; }
+  Object.keys(charts).forEach(function(k) { charts[k].destroy(); });
+  charts = {};
+  setLoading(true);
+  document.getElementById('progress-steps').innerHTML = '';
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('results').classList.remove('visible');
+  document.getElementById('progress-panel').classList.add('active');
+  document.documentElement.style.setProperty('--tp', '#f7941d');
+
+  fetch('/api/query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: query })
+  }).then(function(r) { return r.json(); })
+    .then(function(d) { listenStream(d.job_id); })
+    .catch(function(e) { addStep('x', 'Error: ' + e.message, false); setLoading(false); });
+}
+
+document.getElementById('query-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') submitQuery();
+});
+
+function listenStream(jobId) {
+  var src = new EventSource('/api/stream/' + jobId);
+  currentSrc = src;
+  src.onmessage = function(e) {
+    var msg = JSON.parse(e.data);
+    handleEvent(msg.type, msg.data);
+  };
+  src.onerror = function() { src.close(); setLoading(false); };
+}
+
+function handleEvent(type, data) {
+  if (type === 'thinking' || type === 'message') { addStep('>', data, true); }
+  else if (type === 'tool_start') { addStep('*', data, true); }
+  else if (type === 'tool_result') { addStep('+', data, false); }
+  else if (type === 'result') {
+    try { renderResults(JSON.parse(data)); } catch(e) { console.error(e); }
+  } else if (type === 'error') {
+    document.getElementById('results').innerHTML = '<div class="error-box">Error: ' + data + '</div>';
+    document.getElementById('results').classList.add('visible');
+    setLoading(false);
+  } else if (type === 'done') { setLoading(false); }
+}
+
+// ─── Render router ───────────────────────────────────────────────────────────
+function renderResults(d) {
+  var c = document.getElementById('results');
+  c.innerHTML = '';
+  document.getElementById('progress-panel').classList.remove('active');
+  if (d.player && d.player.team_abbr) applyTeamColor(d.player.team_abbr);
+  if (d.type === 'vs_team') renderVsTeam(d, c);
+  else if (d.type === 'conditional') renderConditional(d, c);
+  else if (d.type === 'h2h') renderH2H(d, c);
+  else if (d.type === 'career') renderCareer(d, c);
+  else c.innerHTML = '<pre style="color:var(--muted)">' + JSON.stringify(d, null, 2) + '</pre>';
+  c.classList.add('visible');
+}
+
+// ─── Player header ───────────────────────────────────────────────────────────
+function playerHeaderHtml(player, rightHtml, extras) {
+  extras = extras || [];
+  var hs = player.headshot_url || hsUrl(player.player_id);
+  var metas = '';
+  if (player.team) metas += '<div class="meta-tag">Team <span>' + player.team + '</span></div>';
+  if (player.position) metas += '<div class="meta-tag">Pos <span>' + player.position + '</span></div>';
+  extras.forEach(function(e) { metas += e; });
+  return '<div class="player-header">'
+    + '<img class="phs" src="' + hs + '" onerror="this.style.display=\'none\'" alt="' + (player.name || '') + '">'
+    + '<div style="flex:1"><div class="player-name">' + (player.name || '') + '</div>'
+    + '<div class="meta-row">' + metas + '</div></div>'
+    + (rightHtml || '')
+    + '</div>';
+}
+
+function insightHtml(text) {
+  return text ? '<div class="insight-block">' + text + '</div>' : '';
+}
+
+// ─── vs_team ─────────────────────────────────────────────────────────────────
+function renderVsTeam(d, c) {
+  var avg = d.averages || {};
+  var splits = d.season_splits || [];
+  var log = d.game_log || [];
+  var rightHtml = '<div class="vs-badge">VS</div>'
+    + '<div class="opp-name">' + (d.opponent ? (d.opponent.name || d.opponent.abbreviation || '') : '') + '</div>';
+
+  c.innerHTML = playerHeaderHtml(d.player, rightHtml, [
+    '<div class="meta-tag">Seasons <span>' + (d.season_range || '') + '</span></div>',
+    '<div class="meta-tag">Type <span>' + (d.season_type || 'Regular Season') + '</span></div>'
+  ])
+  + insightHtml(d.insight)
+  + '<div class="stat-grid" id="sg"></div>'
+  + '<div class="donuts-row" id="donuts"></div>'
+  + '<div class="charts-row" id="charts-area"></div>'
+  + '<div id="log-area"></div>';
+
+  buildStatCards('sg', avg);
+  buildDonuts('donuts', avg, null);
+  if (splits.length >= 2) buildCharts('charts-area', splits, avg);
+  buildGameLog('log-area', log, null);
+}
+
+// ─── conditional ─────────────────────────────────────────────────────────────
+function renderConditional(d, c) {
+  var pAvg = d.primary_averages || {};
+  var cAvg = d.comparison_averages || {};
+  var allActive = d.all_active;
+  var condPlayers = d.condition_players || [];
+
+  var pills = condPlayers.map(function(cp) {
+    var hs = cp.headshot_url || hsUrl(cp.player_id);
+    return '<div class="cond-pill">'
+      + '<img src="' + hs + '" onerror="this.style.display=\'none\'" alt="' + (cp.name || '') + '">'
+      + '<div><div class="pill-name">' + (cp.name || '') + '</div>'
+      + '<div class="pill-status">' + (allActive ? 'Active' : 'Inactive') + '</div></div>'
+      + '</div>';
+  }).join('');
+
+  var lastName = function(n) { return n ? n.split(' ').pop() : 'Player'; };
+  var condNames = condPlayers.map(function(p) { return lastName(p.name); }).join(' and ');
+  var primLbl = (allActive ? 'WITH ' : 'WITHOUT ') + condNames + ' (' + (d.primary_games || 0) + ' games)';
+  var cmpLbl  = (allActive ? 'WITHOUT ' : 'WITH ')  + condNames + ' (' + (d.comparison_games || 0) + ' games)';
+
+  c.innerHTML = playerHeaderHtml(d.player, null, [
+    '<div class="meta-tag">Seasons <span>' + (d.season_range || '') + '</span></div>'
+  ])
+  + (pills ? '<div class="cond-row">' + pills + '</div>' : '')
+  + insightHtml(d.insight)
+  + '<div class="split-grid">'
+  +   '<div class="split-card primary"><div class="split-title">' + primLbl + '</div><div id="split-p"></div></div>'
+  +   '<div class="split-card secondary"><div class="split-title dim">' + cmpLbl + '</div><div id="split-c"></div></div>'
+  + '</div>'
+  + '<div class="donuts-row" id="donuts"></div>'
+  + '<div class="charts-row"><div class="chart-card full"><div class="chart-title">Stat comparison</div>'
+  +   '<div class="chart-wrap"><canvas id="chart-cond-bar"></canvas></div></div></div>'
+  + '<div id="log-area"></div>';
+
+  var statKeys = [
+    ['PPG','pts'], ['RPG','reb'], ['APG','ast'],
+    ['SPG','stl'], ['BPG','blk'], ['TOV','tov'],
+    ['FG%','fg_pct'], ['3P%','fg3_pct'], ['FT%','ft_pct']
+  ];
+
+  var fillSplitCard = function(elId, a) {
+    var el = document.getElementById(elId);
+    if (!el) return;
+    var html = '';
+    statKeys.forEach(function(pair) {
+      var lbl = pair[0], key = pair[1];
+      var v = (a[key] !== undefined && a[key] !== null) ? a[key] : 0;
+      var disp = key.indexOf('pct') !== -1 ? fmtPct(v) : fmt(v);
+      html += '<div class="split-row"><span class="sl">' + lbl + '</span><span class="sv">' + disp + '</span></div>';
+    });
+    el.innerHTML = html;
+  };
+
+  fillSplitCard('split-p', pAvg);
+  fillSplitCard('split-c', cAvg);
+  buildDonuts('donuts', pAvg, null);
+  buildSplitBar('chart-cond-bar', pAvg, cAvg, primLbl.split('(')[0].trim(), cmpLbl.split('(')[0].trim());
+  buildGameLog('log-area', d.primary_log || [], d.comparison_log || []);
+}
+
+// ─── h2h ─────────────────────────────────────────────────────────────────────
+function renderH2H(d, c) {
+  var pAvg = d.player_averages || {};
+  var oAvg = d.opponent_averages || {};
+  var p  = d.player || {};
+  var op = d.opponent_player || {};
+  var pCol = teamColor(p.team_abbr);
+  var oCol = teamColor(op.team_abbr);
+  var pHs = p.headshot_url  || hsUrl(p.player_id);
+  var oHs = op.headshot_url || hsUrl(op.player_id);
+
+  var h2hKeys = [
+    ['PPG','pts'], ['RPG','reb'], ['APG','ast'],
+    ['SPG','stl'], ['BPG','blk'], ['TOV','tov'],
+    ['FG%','fg_pct'], ['3P%','fg3_pct'], ['FT%','ft_pct']
+  ];
+
+  var statsHtml = function(avgs, otherAvgs) {
+    return h2hKeys.map(function(pair) {
+      var lbl = pair[0], key = pair[1];
+      var val   = parseFloat(avgs[key] || 0);
+      var other = parseFloat(otherAvgs[key] || 0);
+      var better = (key === 'tov') ? (val <= other) : (val >= other);
+      var diff   = Math.abs(val - other) > 0.001;
+      var disp   = key.indexOf('pct') !== -1 ? fmtPct(val) : fmt(val);
+      var cls    = (better && diff) ? 'h2h-sval better' : 'h2h-sval';
+      return '<div class="h2h-stat">'
+        + '<span class="h2h-slbl">' + lbl + '</span>'
+        + '<span class="' + cls + '">' + disp + '</span>'
+        + '</div>';
+    }).join('');
+  };
+
+  c.innerHTML = '<div style="padding:28px 0 20px;border-bottom:1px solid var(--border);margin-bottom:28px">'
+    + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.7rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Head to Head</div>'
+    + '<div style="font-size:.8rem;color:var(--muted)">' + (d.season_range || '') + ' &middot; ' + (d.season_type || 'Regular Season') + '</div>'
+    + '</div>'
+    + insightHtml(d.insight)
+    + '<div class="h2h-wrap">'
+    +   '<div class="h2h-card" style="border-top:3px solid ' + pCol + '">'
+    +     '<div class="h2h-head">'
+    +       '<img class="h2h-hs" src="' + pHs + '" style="border:2px solid ' + pCol + ';border-radius:50%" onerror="this.style.display=\'none\'" alt="' + (p.name || '') + '">'
+    +       '<div><div class="h2h-pname">' + (p.name || '') + '</div>'
+    +       '<div class="h2h-team-lbl">' + (p.team || '') + ' &middot; ' + (d.player_games || 0) + ' games</div></div>'
+    +     '</div>'
+    +     statsHtml(pAvg, oAvg)
+    +   '</div>'
+    +   '<div class="h2h-divider-col"><div class="h2h-vs-circle">VS</div></div>'
+    +   '<div class="h2h-card" style="border-top:3px solid ' + oCol + '">'
+    +     '<div class="h2h-head">'
+    +       '<img class="h2h-hs" src="' + oHs + '" style="border:2px solid ' + oCol + ';border-radius:50%" onerror="this.style.display=\'none\'" alt="' + (op.name || '') + '">'
+    +       '<div><div class="h2h-pname">' + (op.name || '') + '</div>'
+    +       '<div class="h2h-team-lbl">' + (op.team || '') + ' &middot; ' + (d.opponent_games || 0) + ' games</div></div>'
+    +     '</div>'
+    +     statsHtml(oAvg, pAvg)
+    +   '</div>'
+    + '</div>'
+    + '<div class="charts-row">'
+    +   '<div class="chart-card full"><div class="chart-title">Head to Head &mdash; Key Stats</div>'
+    +   '<div class="chart-wrap"><canvas id="chart-h2h"></canvas></div></div>'
+    + '</div>'
+    + '<div class="donuts-row" id="donuts"></div>'
+    + '<div id="log-area"></div>';
+
+  buildH2HBar('chart-h2h', pAvg, oAvg, p.name || 'Player A', op.name || 'Player B', pCol, oCol);
+  buildDonuts('donuts', pAvg, oAvg, p.name, op.name, pCol, oCol);
+  buildGameLog('log-area', d.player_log || [], d.opponent_log || [], p.name, op.name);
+}
+
+// ─── career ──────────────────────────────────────────────────────────────────
+function renderCareer(d, c) {
+  var seasons = d.seasons || [];
+  var tot     = d.career_totals || {};
+  var psn     = d.playoff_seasons || [];
+
+  c.innerHTML = playerHeaderHtml(d.player, null, [
+    '<div class="meta-tag">Career GP <span>' + (tot.gp || '') + '</span></div>'
+  ])
+  + insightHtml(d.insight)
+  + '<div class="stat-grid" id="sg"></div>'
+  + '<div class="donuts-row" id="donuts"></div>'
+  + '<div class="charts-row"><div class="chart-card full"><div class="chart-title">PPG / RPG / APG by season</div>'
+  +   '<div class="chart-wrap tall"><canvas id="chart-career"></canvas></div></div></div>'
+  + '<div id="log-area"></div>';
+
+  buildStatCardsCareer('sg', tot);
+  buildDonuts('donuts', tot, null);
+  buildCareerChart('chart-career', seasons, d.player);
+  buildCareerTable('log-area', seasons, psn);
+}
+
+// ─── Stat cards ──────────────────────────────────────────────────────────────
+function buildStatCards(elId, avg) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  var keys = [
+    ['PPG','pts',true], ['RPG','reb',false], ['APG','ast',false],
+    ['SPG','stl',false], ['BPG','blk',false], ['TOV','tov',false],
+    ['GP','gp',false],  ['W-L','wl',false]
+  ];
+  var html = '';
+  keys.forEach(function(k, i) {
+    var lbl = k[0], key = k[1], accent = k[2];
+    var delay = (i * 0.04) + 's';
+    var val;
+    if (key === 'wl') val = (avg.wins || 0) + '-' + (avg.losses || 0);
+    else if (key === 'gp') val = fmtInt(avg.gp);
+    else val = fmt(avg[key]);
+    html += '<div class="stat-card" style="animation-delay:' + delay + '">'
+      + '<div class="sc-label">' + lbl + '</div>'
+      + '<div class="sc-value' + (accent ? ' accent' : '') + '">' + val + '</div>'
+      + '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function buildStatCardsCareer(elId, tot) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  var keys = [
+    ['PPG','pts',true], ['RPG','reb',false], ['APG','ast',false],
+    ['SPG','stl',false], ['BPG','blk',false],
+    ['FG%','fg_pct',false], ['3P%','fg3_pct',false], ['FT%','ft_pct',false]
+  ];
+  var html = '';
+  keys.forEach(function(k, i) {
+    var lbl = k[0], key = k[1], accent = k[2];
+    var delay = (i * 0.04) + 's';
+    var v = (tot[key] !== undefined && tot[key] !== null) ? tot[key] : 0;
+    var val = key.indexOf('pct') !== -1 ? fmtPct(v) : fmt(v);
+    html += '<div class="stat-card" style="animation-delay:' + delay + '">'
+      + '<div class="sc-label">' + lbl + '</div>'
+      + '<div class="sc-value' + (accent ? ' accent' : '') + '">' + val + '</div>'
+      + '</div>';
+  });
+  el.innerHTML = html;
+}
+
+// ─── Donut charts ─────────────────────────────────────────────────────────────
+function buildDonuts(containerId, avgA, avgB, labelA, labelB, colA, colB) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  var isComp = !!avgB;
+  var cA = colA || getComputedStyle(document.documentElement).getPropertyValue('--tp').trim() || '#f7941d';
+  var cB = colB || '#00c8ff';
+
+  var donuts = [
+    { id: 'dn-fg',  lbl: 'Field Goal %',  key: 'fg_pct',  max: 70  },
+    { id: 'dn-3p',  lbl: '3-Point %',     key: 'fg3_pct', max: 50  },
+    { id: 'dn-ft',  lbl: 'Free Throw %',  key: 'ft_pct',  max: 100 }
+  ];
+
+  var html = '';
+  donuts.forEach(function(dn) {
+    html += '<div class="donut-card">'
+      + '<div class="donut-lbl">' + dn.lbl + '</div>'
+      + '<div class="donut-canvas-wrap"><canvas id="' + dn.id + '"></canvas></div>'
+      + '<div class="donut-val" id="' + dn.id + '-v">0%</div>'
+      + (isComp ? '<div class="donut-sub" id="' + dn.id + '-s">0%</div>' : '')
+      + '</div>';
+  });
+  container.innerHTML = html;
+
+  donuts.forEach(function(dn) {
+    var vA = parseFloat((avgA[dn.key] !== undefined ? avgA[dn.key] : 0) || 0);
+    var vB = isComp ? parseFloat((avgB[dn.key] !== undefined ? avgB[dn.key] : 0) || 0) : null;
+    var ctx = document.getElementById(dn.id);
+    if (!ctx) return;
+    var context = ctx.getContext('2d');
+    destroyChart(dn.id);
+
+    if (isComp) {
+      charts[dn.id] = new Chart(context, {
+        type: 'doughnut',
+        data: {
+          datasets: [
+            {
+              data: [vA, Math.max(0, dn.max - vA)],
+              backgroundColor: [cA, 'rgba(255,255,255,0.04)'],
+              borderWidth: 0,
+              circumference: 270,
+              rotation: 225
+            },
+            {
+              data: [vB, Math.max(0, dn.max - vB)],
+              backgroundColor: [cB, 'rgba(255,255,255,0.04)'],
+              borderWidth: 0,
+              circumference: 270,
+              rotation: 225
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '58%',
+          plugins: { legend: { display: false }, tooltip: { enabled: false } }
+        }
+      });
+      var vEl = document.getElementById(dn.id + '-v');
+      var sEl = document.getElementById(dn.id + '-s');
+      if (vEl) { vEl.textContent = fmtPct(vA); vEl.style.color = cA; }
+      if (sEl) { sEl.textContent = fmtPct(vB); sEl.style.color = cB; }
+    } else {
+      var fillColor = cA;
+      charts[dn.id] = new Chart(context, {
+        type: 'doughnut',
+        data: {
+          datasets: [{
+            data: [vA, Math.max(0, dn.max - vA)],
+            backgroundColor: [fillColor, 'rgba(255,255,255,0.04)'],
+            borderWidth: 0,
+            circumference: 270,
+            rotation: 225
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '68%',
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#0e1520',
+              borderColor: 'rgba(255,255,255,.08)',
+              borderWidth: 1,
+              titleColor: '#e8edf5',
+              bodyColor: '#e8edf5'
+            }
+          }
+        }
+      });
+      var valEl = document.getElementById(dn.id + '-v');
+      if (valEl) { valEl.textContent = fmtPct(vA); valEl.style.color = fillColor; }
+    }
+  });
+}
+
+// ─── Line/multi charts ────────────────────────────────────────────────────────
+function buildCharts(containerId, splits, avg) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  var fillColor = getComputedStyle(document.documentElement).getPropertyValue('--tp').trim() || '#f7941d';
+  var labels = splits.map(function(s) { return s.season; });
+
+  container.innerHTML = '<div class="chart-card">'
+    + '<div class="chart-title">Points per game by season</div>'
+    + '<div class="chart-wrap"><canvas id="chart-pts"></canvas></div>'
+    + '</div>'
+    + '<div class="chart-card">'
+    + '<div class="chart-title">Stat profile</div>'
+    + '<div class="chart-wrap"><canvas id="chart-radar"></canvas></div>'
+    + '</div>'
+    + '<div class="chart-card full">'
+    + '<div class="chart-title">PTS / REB / AST trend</div>'
+    + '<div class="chart-wrap tall"><canvas id="chart-multi"></canvas></div>'
+    + '</div>';
+
+  destroyChart('chart-pts');
+  var ctx1 = document.getElementById('chart-pts');
+  if (ctx1) {
+    charts['chart-pts'] = new Chart(ctx1.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'PPG',
+          data: splits.map(function(s) { return s.pts || 0; }),
+          borderColor: fillColor,
+          backgroundColor: fillColor + '14',
+          borderWidth: 2.5,
+          pointRadius: 5,
+          pointBackgroundColor: fillColor,
+          fill: true,
+          tension: 0.35
+        }]
+      },
+      options: Object.assign(baseOpts(), {
+        plugins: {
+          legend: { display: false },
+          tooltip: tooltipOpts()
+        }
+      })
+    });
+  }
+
+  destroyChart('chart-radar');
+  var ctx2 = document.getElementById('chart-radar');
+  if (ctx2) {
+    var maxes = { pts: 40, reb: 20, ast: 15, stl: 4, blk: 4, fg_pct: 70, fg3_pct: 50 };
+    var rkeys = ['pts', 'reb', 'ast', 'stl', 'blk', 'fg_pct', 'fg3_pct'];
+    charts['chart-radar'] = new Chart(ctx2.getContext('2d'), {
+      type: 'radar',
+      data: {
+        labels: ['PTS', 'REB', 'AST', 'STL', 'BLK', 'FG%', '3P%'],
+        datasets: [{
+          label: 'Stats',
+          data: rkeys.map(function(k, i) {
+            return Math.min(100, ((avg[k] || 0) / maxes[rkeys[i]]) * 100);
+          }),
+          backgroundColor: fillColor + '20',
+          borderColor: fillColor,
+          borderWidth: 2,
+          pointBackgroundColor: fillColor,
+          pointRadius: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          r: {
+            angleLines: { color: 'rgba(255,255,255,.06)' },
+            grid: { color: 'rgba(255,255,255,.06)' },
+            ticks: { display: false },
+            pointLabels: { color: '#6b7a94', font: { size: 10 } },
+            min: 0,
+            max: 100
+          }
+        },
+        plugins: { legend: { display: false }, tooltip: tooltipOpts() }
+      }
+    });
+  }
+
+  destroyChart('chart-multi');
+  var ctx3 = document.getElementById('chart-multi');
+  if (ctx3) {
+    charts['chart-multi'] = new Chart(ctx3.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'PTS',
+            data: splits.map(function(s) { return s.pts || 0; }),
+            borderColor: fillColor, borderWidth: 2.5, pointRadius: 4, fill: false, tension: 0.35
+          },
+          {
+            label: 'REB',
+            data: splits.map(function(s) { return s.reb || 0; }),
+            borderColor: '#00c8ff', borderWidth: 2, pointRadius: 3, fill: false, tension: 0.35
+          },
+          {
+            label: 'AST',
+            data: splits.map(function(s) { return s.ast || 0; }),
+            borderColor: '#a78bfa', borderWidth: 2, pointRadius: 3, fill: false, tension: 0.35
+          }
+        ]
+      },
+      options: Object.assign(baseOpts(), {
+        plugins: {
+          legend: { display: true, position: 'top', labels: { color: '#6b7a94', boxWidth: 12, font: { size: 10 } } },
+          tooltip: tooltipOpts()
+        }
+      })
+    });
+  }
+}
+
+function buildSplitBar(canvasId, aAvg, bAvg, aLbl, bLbl) {
+  destroyChart(canvasId);
+  var fillColor = getComputedStyle(document.documentElement).getPropertyValue('--tp').trim() || '#f7941d';
+  var ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  var keys = ['pts', 'reb', 'ast', 'stl', 'blk'];
+  charts[canvasId] = new Chart(ctx.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: ['PTS', 'REB', 'AST', 'STL', 'BLK'],
+      datasets: [
+        {
+          label: aLbl,
+          data: keys.map(function(k) { return parseFloat(aAvg[k] || 0); }),
+          backgroundColor: fillColor + 'BB',
+          borderRadius: 4
+        },
+        {
+          label: bLbl,
+          data: keys.map(function(k) { return parseFloat(bAvg[k] || 0); }),
+          backgroundColor: 'rgba(255,255,255,0.15)',
+          borderRadius: 4
+        }
+      ]
+    },
+    options: Object.assign(baseOpts(), {
+      plugins: {
+        legend: { display: true, position: 'top', labels: { color: '#6b7a94', boxWidth: 12, font: { size: 10 } } },
+        tooltip: tooltipOpts()
+      }
+    })
+  });
+}
+
+function buildH2HBar(canvasId, pAvg, oAvg, pName, oName, pCol, oCol) {
+  destroyChart(canvasId);
+  var ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  var keys = ['pts', 'reb', 'ast', 'stl', 'blk'];
+  charts[canvasId] = new Chart(ctx.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: ['PTS', 'REB', 'AST', 'STL', 'BLK'],
+      datasets: [
+        {
+          label: pName,
+          data: keys.map(function(k) { return parseFloat(pAvg[k] || 0); }),
+          backgroundColor: pCol + 'CC',
+          borderRadius: 4
+        },
+        {
+          label: oName,
+          data: keys.map(function(k) { return parseFloat(oAvg[k] || 0); }),
+          backgroundColor: oCol + 'CC',
+          borderRadius: 4
+        }
+      ]
+    },
+    options: Object.assign(baseOpts(), {
+      plugins: {
+        legend: { display: true, position: 'top', labels: { color: '#6b7a94', boxWidth: 12, font: { size: 10 } } },
+        tooltip: tooltipOpts()
+      }
+    })
+  });
+}
+
+function buildCareerChart(canvasId, seasons, player) {
+  destroyChart(canvasId);
+  var ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  var fillColor = getComputedStyle(document.documentElement).getPropertyValue('--tp').trim() || '#f7941d';
+  var labels = seasons.map(function(s) { return s.season; });
+  charts[canvasId] = new Chart(ctx.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'PTS',
+          data: seasons.map(function(s) { return s.pts || 0; }),
+          borderColor: fillColor, backgroundColor: fillColor + '12',
+          borderWidth: 2.5, pointRadius: 4, fill: false, tension: 0.35
+        },
+        {
+          label: 'REB',
+          data: seasons.map(function(s) { return s.reb || 0; }),
+          borderColor: '#00c8ff',
+          borderWidth: 2, pointRadius: 3, fill: false, tension: 0.35
+        },
+        {
+          label: 'AST',
+          data: seasons.map(function(s) { return s.ast || 0; }),
+          borderColor: '#a78bfa',
+          borderWidth: 2, pointRadius: 3, fill: false, tension: 0.35
+        }
+      ]
+    },
+    options: Object.assign(baseOpts(), {
+      plugins: {
+        legend: { display: true, position: 'top', labels: { color: '#6b7a94', boxWidth: 12, font: { size: 10 } } },
+        tooltip: tooltipOpts()
+      }
+    })
+  });
+}
+
+// ─── Career table ─────────────────────────────────────────────────────────────
+function buildCareerTable(containerId, regular, playoffs) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  window._careerReg  = regular;
+  window._careerPost = playoffs;
+
+  var hasPlayoffs = playoffs && playoffs.length > 0;
+  var toggle = hasPlayoffs
+    ? '<div class="toggle-btns"><button id="btn-reg" class="on" onclick="switchCareer(\'reg\')">Regular Season</button><button id="btn-poff" onclick="switchCareer(\'post\')">Playoffs</button></div>'
+    : '';
+
+  container.innerHTML = '<div class="log-section">'
+    + '<div class="log-header">'
+    +   '<div class="log-title">Season by Season</div>'
+    +   '<div style="display:flex;gap:10px;align-items:center">' + toggle
+    +   '<div class="log-count" id="career-count">' + regular.length + ' seasons</div></div>'
+    + '</div>'
+    + '<div class="table-wrap" id="career-tbl-wrap">' + careerTableHtml(regular) + '</div>'
+    + '</div>';
+}
+
+window.switchCareer = function(mode) {
+  var data = mode === 'reg' ? window._careerReg : window._careerPost;
+  document.getElementById('career-tbl-wrap').innerHTML = careerTableHtml(data);
+  document.getElementById('career-count').textContent = data.length + ' seasons';
+  var br = document.getElementById('btn-reg');
+  var bp = document.getElementById('btn-poff');
+  if (br) br.className = mode === 'reg' ? 'on' : '';
+  if (bp) bp.className = mode === 'post' ? 'on' : '';
+};
+
+function careerTableHtml(seasons) {
+  if (!seasons || !seasons.length) return '<p style="color:var(--muted);padding:16px 0">No data.</p>';
+  var best = null;
+  seasons.forEach(function(s) {
+    if (!best || (s.pts || 0) > (best.pts || 0)) best = s;
+  });
+  var rows = '';
+  seasons.forEach(function(s) {
+    var hi = s === best ? ' class="highlight-row"' : '';
+    var team = s.team || 'TOT';
+    var fg3disp = fmtPct(s.fg3_pct || 0) + ' <span style="color:var(--muted);font-size:.62rem">(' + fmt(s.fg3a || 0) + ' att)</span>';
+    rows += '<tr' + hi + '>'
+      + '<td><span class="season-tag">' + (s.season || '') + '</span></td>'
+      + '<td>' + team + '</td>'
+      + '<td>' + (s.gp || 0) + '</td>'
+      + '<td class="pts-cell">' + fmt(s.pts || 0) + '</td>'
+      + '<td>' + fmt(s.reb || 0) + '</td>'
+      + '<td>' + fmt(s.ast || 0) + '</td>'
+      + '<td>' + fmt(s.stl || 0) + '</td>'
+      + '<td>' + fmt(s.blk || 0) + '</td>'
+      + '<td>' + fmtPct(s.fg_pct || 0) + '</td>'
+      + '<td>' + fg3disp + '</td>'
+      + '<td>' + fmtPct(s.ft_pct || 0) + '</td>'
+      + '</tr>';
+  });
+  return '<table>'
+    + '<thead><tr>'
+    + '<th>Season</th><th>Team</th><th>GP</th><th>PPG</th><th>RPG</th><th>APG</th>'
+    + '<th>SPG</th><th>BPG</th><th>FG%</th><th>3P% (att)</th><th>FT%</th>'
+    + '</tr></thead>'
+    + '<tbody>' + rows + '</tbody>'
+    + '</table>';
+}
+
+// ─── Game log ─────────────────────────────────────────────────────────────────
+function buildGameLog(containerId, primaryLog, secondaryLog, aName, bName) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  logA = primaryLog || [];
+  logB = secondaryLog || [];
+  sortState = { col: null, dir: 'desc' };
+
+  var hasToggle = logB && logB.length > 0;
+  var aLbl = aName || 'Primary';
+  var bLbl = bName || 'Comparison';
+  var toggle = hasToggle
+    ? '<div class="toggle-btns"><button id="btn-la" class="on" onclick="switchLog(\'a\')">' + aLbl + '</button><button id="btn-lb" onclick="switchLog(\'b\')">' + bLbl + '</button></div>'
+    : '';
+
+  container.innerHTML = '<div class="log-section">'
+    + '<div class="log-header">'
+    +   '<div class="log-title">Game Log</div>'
+    +   '<div style="display:flex;gap:12px;align-items:center">' + toggle
+    +   '<div class="log-count" id="log-count">' + logA.length + ' games</div></div>'
+    + '</div>'
+    + '<div class="table-wrap" id="log-tbl-wrap">' + gameLogHtml(logA) + '</div>'
+    + '</div>';
+}
+
+window.switchLog = function(side) {
+  var data = side === 'a' ? logA : logB;
+  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(data);
+  document.getElementById('log-count').textContent = data.length + ' games';
+  var ba = document.getElementById('btn-la');
+  var bb = document.getElementById('btn-lb');
+  if (ba) ba.className = side === 'a' ? 'on' : '';
+  if (bb) bb.className = side === 'b' ? 'on' : '';
+};
+
+function gameLogHtml(rows) {
+  if (!rows || !rows.length) return '<p style="color:var(--muted);padding:16px 0">No games.</p>';
+  var tbody = '';
+  rows.forEach(function(g) {
+    var pm = parseInt(g.plus_minus || 0);
+    var pmCls = pm > 0 ? 'pp' : pm < 0 ? 'pm' : 'pz';
+    var pmStr = pm > 0 ? '+' + pm : String(pm);
+    tbody += '<tr>'
+      + '<td><span class="season-tag">' + (g.season || '') + '</span></td>'
+      + '<td>' + (g.date || '') + '</td>'
+      + '<td>' + (g.matchup || '') + '</td>'
+      + '<td class="' + (g.result === 'W' ? 'rw' : 'rl') + '">' + (g.result || '') + '</td>'
+      + '<td class="pts-cell">' + (g.pts || 0) + '</td>'
+      + '<td>' + (g.reb || 0) + '</td>'
+      + '<td>' + (g.ast || 0) + '</td>'
+      + '<td>' + (g.stl || 0) + '</td>'
+      + '<td>' + (g.blk || 0) + '</td>'
+      + '<td>' + (g.tov || 0) + '</td>'
+      + '<td>' + fmtPct(g.fg_pct || 0) + '</td>'
+      + '<td>' + fmtPct(g.fg3_pct || 0) + '</td>'
+      + '<td class="' + pmCls + '">' + pmStr + '</td>'
+      + '</tr>';
+  });
+  return '<table>'
+    + '<thead><tr>'
+    + '<th onclick="sortGameLog(\'season\')">Season</th>'
+    + '<th onclick="sortGameLog(\'date\')">Date</th>'
+    + '<th>Matchup</th><th>W/L</th>'
+    + '<th onclick="sortGameLog(\'pts\')">PTS</th>'
+    + '<th onclick="sortGameLog(\'reb\')">REB</th>'
+    + '<th onclick="sortGameLog(\'ast\')">AST</th>'
+    + '<th onclick="sortGameLog(\'stl\')">STL</th>'
+    + '<th onclick="sortGameLog(\'blk\')">BLK</th>'
+    + '<th onclick="sortGameLog(\'tov\')">TOV</th>'
+    + '<th onclick="sortGameLog(\'fg_pct\')">FG%</th>'
+    + '<th onclick="sortGameLog(\'fg3_pct\')">3P%</th>'
+    + '<th onclick="sortGameLog(\'plus_minus\')">/+/-</th>'
+    + '</tr></thead>'
+    + '<tbody>' + tbody + '</tbody>'
+    + '</table>';
+}
+
+window.sortGameLog = function(col) {
+  if (sortState.col === col && sortState.dir === 'desc') {
+    sortState.dir = 'asc';
+  } else {
+    sortState.col = col;
+    sortState.dir = 'desc';
+  }
+  var btn = document.getElementById('btn-la');
+  var src = (!btn || btn.className === 'on') ? logA : logB;
+  var sorted = src.slice().sort(function(a, b) {
+    var av = a[col], bv = b[col];
+    if (typeof av === 'number') return sortState.dir === 'asc' ? av - bv : bv - av;
+    return sortState.dir === 'asc'
+      ? String(av || '').localeCompare(String(bv || ''))
+      : String(bv || '').localeCompare(String(av || ''));
+  });
+  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(sorted);
+};
+</script>
+</body>
+</html>

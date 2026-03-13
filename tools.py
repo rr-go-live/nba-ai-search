@@ -138,6 +138,68 @@ TOOL_DEFINITIONS = [
             "required": ["player_id"],
         },
     },
+    {
+        "name": "get_multi_player_stats",
+        "description": (
+            "Compare 2–6 players side by side, each with their own season range and type.\n\n"
+            "Use for:\n"
+            "  • 'Kobe 2010 playoffs vs Tatum 2024 playoffs'\n"
+            "  • 'Compare LeBron, Curry, Durant, Giannis career stats'\n"
+            "  • 'Jordan vs LeBron prime years comparison'\n"
+            "  • Any query asking to compare multiple players\n\n"
+            "Each player config specifies their own season_from/season_to/season_type so "
+            "historical eras can be compared directly (e.g. Kobe 2009-10 Playoffs vs Tatum 2023-24 Playoffs).\n"
+            "Works for ALL players including retired legends (Jordan, Kobe, Shaq, Bird, Magic, etc.)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "players": {
+                    "type": "array",
+                    "description": "List of player configs, one per player (2-6 players)",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "player_id":   {"type": "integer", "description": "NBA player ID"},
+                            "season_from": {"type": "string",  "description": "Start season e.g. '2009-10'"},
+                            "season_to":   {"type": "string",  "description": "End season e.g. '2009-10'"},
+                            "season_type": {"type": "string",  "description": "'Regular Season' or 'Playoffs'"},
+                            "label":       {"type": "string",  "description": "Display label e.g. 'Kobe 2010 Finals'"},
+                        },
+                        "required": ["player_id", "season_from", "season_to"],
+                    },
+                    "minItems": 2,
+                    "maxItems": 6,
+                },
+            },
+            "required": ["players"],
+        },
+    },
+    {
+        "name": "get_leaderboard",
+        "description": (
+            "League-wide stat leaderboard — top N players ranked by a stat category.\n\n"
+            "Use for:\n"
+            "  • 'Who are the top scorers this season?'\n"
+            "  • 'Leaderboard of players with most active points'\n"
+            "  • 'Most rebounds per game leaders'\n"
+            "  • 'Best FG% shooters this year'\n"
+            "  • '2009-10 season scoring leaders' (historical seasons work too)\n\n"
+            "Stat values: pts, reb, ast, stl, blk, fg3m, eff, min\n"
+            "Use per_mode='PerGame' for averages, 'Totals' for cumulative season totals."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "stat":        {"type": "string",  "description": "Stat to rank by: pts, reb, ast, stl, blk, fg3m, eff, min"},
+                "season":      {"type": "string",  "description": "Season e.g. '2025-26'"},
+                "season_type": {"type": "string",  "description": "'Regular Season' or 'Playoffs'"},
+                "per_mode":    {"type": "string",  "description": "'PerGame' (default) or 'Totals'"},
+                "top_n":       {"type": "integer", "description": "How many players to return (default 10, max 25)"},
+            },
+            "required": ["stat"],
+        },
+    },
 ]
 
 
@@ -204,6 +266,25 @@ def execute_tool(tool_name: str, tool_input: dict) -> dict:
 
     elif tool_name == "get_career_stats":
         return nba.get_player_career_stats(tool_input["player_id"])
+
+    elif tool_name == "get_multi_player_stats":
+        # Fill in default season_to if omitted per player config
+        players = tool_input.get("players", [])
+        for cfg in players:
+            if not cfg.get("season_to"):
+                cfg["season_to"] = cfg.get("season_from", nba.DEFAULT_SEASON)
+            if not cfg.get("season_type"):
+                cfg["season_type"] = "Regular Season"
+        return nba.get_multi_player_stats(players)
+
+    elif tool_name == "get_leaderboard":
+        return nba.get_leaderboard(
+            stat        = tool_input.get("stat",        "pts"),
+            season      = tool_input.get("season",      nba.DEFAULT_SEASON),
+            season_type = tool_input.get("season_type", "Regular Season"),
+            per_mode    = tool_input.get("per_mode",    "PerGame"),
+            top_n       = tool_input.get("top_n",       10),
+        )
 
     else:
         return {"error": f"Unknown tool: {tool_name}"}

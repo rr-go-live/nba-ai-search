@@ -185,6 +185,19 @@ def parse_season(raw: str) -> str:
 
 
 def seasons_between(s_from: str, s_to: str) -> list:
+    """
+    Return a list of NBA season strings between s_from and s_to inclusive.
+
+    ORDER: newest season first (descending).
+
+    WHY DESCENDING:
+    The NBA API is called once per season. If the cookie session throttles
+    or errors partway through a long range (e.g. "since 2015" = 11 API calls),
+    the calls that succeed are the ones fetched FIRST. Fetching newest seasons
+    first means recent games always survive throttling — older historical data
+    is less critical than the most recent matchups. The [:MAX_SEASONS_SPAN]
+    slice then keeps the freshest data if we have to drop anything.
+    """
     def start(s):
         try:
             return int(s.split("-")[0])
@@ -192,7 +205,9 @@ def seasons_between(s_from: str, s_to: str) -> list:
             return 2024
     y0 = max(start(s_from), MIN_YEAR)
     y1 = min(start(s_to),   MAX_YEAR)
-    return [f"{y}-{str(y + 1)[-2:]}" for y in range(y0, y1 + 1)][:MAX_SEASONS_SPAN]
+    seasons = [f"{y}-{str(y + 1)[-2:]}" for y in range(y0, y1 + 1)]
+    seasons.reverse()   # newest first
+    return seasons[:MAX_SEASONS_SPAN]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -293,11 +308,35 @@ def _avg(rows: list) -> dict:
     }
 
 
+def _parse_date_sort(raw_date: str) -> str:
+    """
+    Convert NBA API date string to YYYY-MM-DD for correct lexicographic sorting.
+
+    WHY THIS EXISTS:
+    The NBA API returns GAME_DATE as 'OCT 22, 2024' (all-caps month abbreviation).
+    Sorting these as raw strings fails — 'APR' < 'FEB' alphabetically, so
+    April games appear before February games. Cross-year comparisons are even
+    worse: 'NOV 05, 2022' > 'OCT 25, 2023' alphabetically, which puts the
+    2022 game after the 2023 game.
+
+    Converting to 'YYYY-MM-DD' makes string sort identical to date sort.
+    """
+    if not raw_date:
+        return ""
+    try:
+        from datetime import datetime
+        return datetime.strptime(raw_date.strip().title(), "%b %d, %Y").strftime("%Y-%m-%d")
+    except Exception:
+        return raw_date   # fallback: keep original, better than crashing
+
+
 def _to_row(r: dict) -> dict:
     """Convert raw game-log dict to frontend-safe dict. All values non-None."""
+    raw_date = r.get("GAME_DATE") or ""
     return {
         "season":     r.get("SEASON") or "",
-        "date":       r.get("GAME_DATE") or "",
+        "date":       raw_date,
+        "date_sort":  _parse_date_sort(raw_date),   # YYYY-MM-DD for correct sort
         "matchup":    r.get("MATCHUP") or "",
         "result":     r.get("WL") or "",
         "min":        str(r.get("MIN") or ""),
@@ -373,6 +412,12 @@ def get_player_vs_team_stats(
                 all_rows.extend(filtered)
         except Exception as e:
             logger.warning(f"GameLog {season}: {e}")
+    # Sort newest games first so [:MAX_GAME_LOG_ROWS] always keeps the most
+    # recent matchups. SEASON is already a string like "2024-25" so it sorts
+    # lexicographically correctly. GAME_DATE within a season comes back
+    # newest-first from the API so no secondary sort needed.
+    all_rows.sort(key=lambda r: r.get("SEASON", ""), reverse=True)
+
     return {
         "averages":      _avg(all_rows),
         "season_splits": splits,
@@ -523,6 +568,10 @@ def get_player_conditional_stats(
         matched  = [r for r in primary_rows if _norm_game_id(r.get("Game_ID")) not in union_ids]
         opposite = [r for r in primary_rows if _norm_game_id(r.get("Game_ID")) in union_ids]
 
+    # Sort both logs newest-first before slicing
+    matched.sort( key=lambda r: r.get("SEASON", ""), reverse=True)
+    opposite.sort(key=lambda r: r.get("SEASON", ""), reverse=True)
+
     return {
         "primary_averages":    _avg(matched),
         "comparison_averages": _avg(opposite),
@@ -532,4 +581,253 @@ def get_player_conditional_stats(
         "comparison_log":      [_to_row(r) for r in opposite][:MAX_GAME_LOG_ROWS],
         "all_active":          all_active,
         "total_games":         len(primary_rows),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Multi-player comparison
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_player_season_averages(
+    player_id:   int,
+    season_from: str = DEFAULT_SEASON,
+    season_to:   str = DEFAULT_SEASON,
+    season_type: str = "Regular Season",
+) -> dict:
+    """
+    Per-game averages for a single player across a season range.
+
+    HOW IT WORKS:
+    Uses the career stats endpoint to get all season rows, then filters to
+    the requested range and aggregates. This is one API call per player
+    regardless of how many seasons are requested, making it fast for
+    multi-player comparisons.
+
+    For multi-season ranges the rows are GP-weighted so a 50-game season
+    contributes proportionally more than a 10-game injury season.
+
+    HISTORICAL PLAYERS:
+    Works identically for retired players (Kobe, Shaq, Jordan etc.) —
+    the nba_api static player list and career stats endpoint include all
+    historical players going back to the 1940s.
+    """
+    data = _career_stats_raw(player_id)
+    key  = "SeasonTotalsPostSeason" if season_type == "Playoffs" else "SeasonTotalsRegularSeason"
+    rows = data.get(key, [])
+
+    def _season_year(s: str) -> int:
+        try:
+            return int(str(s).split("-")[0])
+        except Exception:
+            return 0
+
+    y0 = _season_year(season_from)
+    y1 = _season_year(season_to)
+    filtered = [r for r in rows if y0 <= _season_year(r.get("SEASON_ID", "")) <= y1]
+
+    if not filtered:
+        return {"error": f"No {season_type} data for seasons {season_from}–{season_to}"}
+
+    # GP-weighted average across multiple seasons
+    total_gp = sum(_safe_int(r.get("GP")) for r in filtered)
+    if total_gp == 0:
+        return {"error": "No games played in range"}
+
+    def wp(key):   # weighted per-game value
+        return round(
+            sum(_safe_float(r.get(key)) * _safe_int(r.get("GP")) for r in filtered) / total_gp, 1
+        )
+
+    def wpct(key): # weighted pct (stored as 0-1 in career stats)
+        return round(
+            sum(_safe_float(r.get(key)) * _safe_int(r.get("GP")) for r in filtered) / total_gp * 100, 1
+        )
+
+    wins   = sum(_safe_int(r.get("W",  0)) for r in filtered)
+    losses = sum(_safe_int(r.get("L",  0)) for r in filtered)
+
+    return {
+        "gp":      total_gp,
+        "pts":     wp("PTS"),
+        "reb":     wp("REB"),
+        "ast":     wp("AST"),
+        "stl":     wp("STL"),
+        "blk":     wp("BLK"),
+        "tov":     wp("TOV"),
+        "fg_pct":  wpct("FG_PCT"),
+        "fg3_pct": wpct("FG3_PCT"),
+        "fg3a":    wp("FG3A"),
+        "ft_pct":  wpct("FT_PCT"),
+        "wins":    wins,
+        "losses":  losses,
+        "seasons_found": [str(r.get("SEASON_ID", "")) for r in filtered],
+    }
+
+
+def get_multi_player_stats(
+    players: list,     # [{player_id, season_from, season_to, season_type, label}]
+) -> dict:
+    """
+    Fetch per-game averages for multiple players in parallel configurations.
+
+    USAGE:
+      "Compare Kobe 2010 playoffs vs Tatum 2024 playoffs":
+        players = [
+          {player_id: 977,     season_from: "2009-10", season_to: "2009-10", season_type: "Playoffs", label: "Kobe 2010 Finals"},
+          {player_id: 1628369, season_from: "2023-24", season_to: "2023-24", season_type: "Playoffs", label: "Tatum 2024 Finals"},
+        ]
+
+      "Compare LeBron, Curry, Durant career stats":
+        players = [
+          {player_id: 2544,   season_from: "2003-04", season_to: "2025-26", season_type: "Regular Season", label: "LeBron Career"},
+          ...
+        ]
+
+    Returns a list of player result objects ready for the compare renderer.
+    Each includes name, headshot, team, averages, and the label.
+    The caller (agent) is responsible for resolving player IDs and labels.
+    """
+    results = []
+    for cfg in players:
+        pid          = cfg.get("player_id")
+        season_from  = cfg.get("season_from", DEFAULT_SEASON)
+        season_to    = cfg.get("season_to",   DEFAULT_SEASON)
+        season_type  = cfg.get("season_type", "Regular Season")
+        label        = cfg.get("label", "")
+
+        try:
+            avgs = get_player_season_averages(pid, season_from, season_to, season_type)
+            info = get_player_info(pid)
+            results.append({
+                "player_id":   pid,
+                "name":        info.get("full_name", label or f"Player {pid}"),
+                "team":        info.get("team", ""),
+                "team_abbr":   info.get("team_abbr", ""),
+                "position":    info.get("position", ""),
+                "headshot_url": info.get("headshot_url", headshot_url(pid)),
+                "label":       label,
+                "season_from": season_from,
+                "season_to":   season_to,
+                "season_type": season_type,
+                "averages":    avgs,
+            })
+        except Exception as e:
+            logger.warning(f"get_multi_player_stats player {pid}: {e}")
+            results.append({"player_id": pid, "label": label, "error": str(e)})
+
+    return {"players": results, "count": len(results)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Leaderboard
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Maps natural language stat names → NBA API StatCategory param
+STAT_CATEGORY_MAP = {
+    # Points
+    "pts": "PTS", "points": "PTS", "scoring": "PTS", "scorers": "PTS",
+    "ppg": "PTS", "point": "PTS",
+    # Rebounds
+    "reb": "REB", "rebounds": "REB", "rebounders": "REB", "rpg": "REB",
+    "rebound": "REB",
+    # Assists
+    "ast": "AST", "assists": "AST", "playmakers": "AST", "apg": "AST",
+    "assist": "AST",
+    # Steals
+    "stl": "STL", "steals": "STL", "spg": "STL", "steal": "STL",
+    # Blocks
+    "blk": "BLK", "blocks": "BLK", "bpg": "BLK", "block": "BLK",
+    # 3-pointers made
+    "fg3m": "FG3M", "3pm": "FG3M", "threes": "FG3M", "three-pointers": "FG3M",
+    "3-pointers": "FG3M", "triples": "FG3M",
+    # Efficiency / EFF
+    "eff": "EFF", "efficiency": "EFF", "pir": "EFF",
+    # Minutes
+    "min": "MIN", "minutes": "MIN",
+}
+
+
+def get_leaderboard(
+    stat:        str = "pts",
+    season:      str = DEFAULT_SEASON,
+    season_type: str = "Regular Season",
+    per_mode:    str = "PerGame",
+    top_n:       int = 10,
+) -> dict:
+    """
+    League-wide stat leaderboard via the leagueleaders endpoint.
+
+    PARAMETERS:
+      stat         — natural language stat name OR raw category ('PTS', 'REB', etc.)
+      season       — e.g. '2025-26'
+      season_type  — 'Regular Season' or 'Playoffs'
+      per_mode     — 'PerGame' (averages) or 'Totals' (cumulative)
+      top_n        — number of players to return (max 25)
+
+    EXAMPLE:
+      "Top 10 scorers this season"
+        → stat='pts', season='2025-26', season_type='Regular Season', top_n=10
+
+      "Points leaders in 2009-10 playoffs"
+        → stat='pts', season='2009-10', season_type='Playoffs', top_n=10
+
+    NETWORK:
+      One API call to stats.nba.com/stats/leagueleaders via the cookie session.
+      Returns an empty leaderboard on network failure so the agent can still
+      provide a graceful response.
+    """
+    # Resolve stat string to API category
+    cat_key = stat.strip().lower()
+    category = STAT_CATEGORY_MAP.get(cat_key, cat_key.upper())
+
+    top_n = min(max(top_n, 1), 25)
+
+    try:
+        time.sleep(NBA_API_DELAY)
+        data = nba_http.get_parsed(
+            "leagueleaders",
+            params={
+                "LeagueID":    "00",
+                "PerMode":     per_mode,
+                "Scope":       "S",
+                "Season":      season,
+                "SeasonType":  season_type,
+                "StatCategory": category,
+            },
+            timeout=NBA_API_TIMEOUT,
+        )
+    except Exception as e:
+        logger.error(f"leagueleaders {category} {season}: {e}")
+        return {"error": str(e), "leaders": []}
+
+    raw_rows = data.get("LeagueLeaders", [])[:top_n]
+
+    leaders = []
+    for rank, r in enumerate(raw_rows, 1):
+        pid = _safe_int(r.get("PLAYER_ID"))
+        leaders.append({
+            "rank":        rank,
+            "player_id":   pid,
+            "name":        str(r.get("PLAYER") or ""),
+            "team":        str(r.get("TEAM") or ""),
+            "headshot_url": headshot_url(pid),
+            "gp":          _safe_int(r.get("GP")),
+            "pts":         round(_safe_float(r.get("PTS")), 1),
+            "reb":         round(_safe_float(r.get("REB")), 1),
+            "ast":         round(_safe_float(r.get("AST")), 1),
+            "stl":         round(_safe_float(r.get("STL")), 1),
+            "blk":         round(_safe_float(r.get("BLK")), 1),
+            "fg_pct":      round(_safe_float(r.get("FG_PCT")) * 100, 1),
+            "fg3_pct":     round(_safe_float(r.get("FG3_PCT")) * 100, 1),
+            "stat_value":  round(_safe_float(r.get(category, r.get("PTS"))), 1),
+        })
+
+    return {
+        "stat_category": category,
+        "stat_label":    stat,
+        "season":        season,
+        "season_type":   season_type,
+        "per_mode":      per_mode,
+        "leaders":       leaders,
+        "count":         len(leaders),
     }

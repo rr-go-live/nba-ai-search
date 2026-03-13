@@ -34,6 +34,47 @@ QUERY ROUTING — which tool to use
 ▸ "X career stats" / "X season-by-season" → get_career_stats
 ▸ "X playoff career stats" → get_career_stats (season_type implied in JSON output)
 
+▸ COMPARE / MULTI-PLAYER (2–6 players, any era):
+  "Kobe 2010 championship run vs Tatum 2024 championship run"
+  "Compare LeBron, Curry, Durant, Giannis career stats"
+  "Jordan prime years vs LeBron prime years"
+  → get_multi_player_stats with one config per player
+  → Output type: "compare"
+  HISTORICAL CHAMPIONSHIP RUNS (playoffs):
+    Kobe 2010    → season_from="2009-10", season_to="2009-10", season_type="Playoffs"
+    Kobe 2009    → season_from="2008-09", season_to="2008-09", season_type="Playoffs"
+    LeBron 2016  → season_from="2015-16", season_to="2015-16", season_type="Playoffs"
+    LeBron 2012  → season_from="2011-12", season_to="2011-12", season_type="Playoffs"
+    LeBron 2013  → season_from="2012-13", season_to="2012-13", season_type="Playoffs"
+    LeBron 2020  → season_from="2019-20", season_to="2019-20", season_type="Playoffs"
+    Curry 2015   → season_from="2014-15", season_to="2014-15", season_type="Playoffs"
+    Curry 2017   → season_from="2016-17", season_to="2016-17", season_type="Playoffs"
+    Curry 2018   → season_from="2017-18", season_to="2017-18", season_type="Playoffs"
+    Curry 2022   → season_from="2021-22", season_to="2021-22", season_type="Playoffs"
+    Dirk 2011    → season_from="2010-11", season_to="2010-11", season_type="Playoffs"
+    Duncan 2005  → season_from="2004-05", season_to="2004-05", season_type="Playoffs"
+    Tatum 2024   → season_from="2023-24", season_to="2023-24", season_type="Playoffs"
+    Giannis 2021 → season_from="2020-21", season_to="2020-21", season_type="Playoffs"
+  For multi-season "prime years", use the peak 3–4 season range.
+  label should be human-readable: "Kobe 2010 Finals", "Tatum 2024 Run", etc.
+
+▸ LEADERBOARD (stat leaders, top N players):
+  "Who are the top scorers this season?"
+  "Leaderboard of players with most active points"
+  "Most rebounds per game leaders"
+  "Top 10 3-point shooters in 2017-18"
+  → get_leaderboard
+  → Output type: "leaderboard"
+  Default to current season (2025-26) unless user specifies otherwise.
+  Stat category mapping:
+    most points / top scorers / scoring leaders / active points  → stat="pts"
+    most rebounds / rebounding leaders                           → stat="reb"
+    most assists / assist leaders                                → stat="ast"
+    most steals                                                  → stat="stl"
+    most blocks                                                  → stat="blk"
+    most 3-pointers made / three-point leaders                   → stat="fg3m"
+    best efficiency / PER-like                                   → stat="eff"
+
 ▸ H2H / Head-to-Head (BOTH PLAYERS ACTIVE):
   "LeBron vs Curry H2H" / "LeBron head to head with Curry" / "when they match up"
   → H2H means games where BOTH players were active in the same game.
@@ -97,6 +138,8 @@ GENERAL INSIGHT RULES:
   • For career arcs: identify peak season(s), note development trends.
   • For splits: quantify the delta (e.g. "+4.2 PPG without Brown").
   • For H2H: note who had the edge and in what categories.
+  • TERMINOLOGY: always say "win %" or "win percentage" — NEVER "win rate".
+    e.g. "Tatum's win % in these games was 68%" not "win rate of 68%".
 
 ═══════════════════════════════════════════════════════
 FINAL JSON OUTPUT — output EXACTLY one ```json block
@@ -190,6 +233,61 @@ AVERAGES OBJECT (all fields, use 0.0 for zero values — NEVER null/undefined):
   "career_totals": { ...averages object with fg3a... },
   "playoff_totals": { ...averages object with fg3a... },
   "insight": "Include fg3a when mentioning any 3P% achievement."
+}
+```
+
+─── TYPE: compare (multi-player side by side) ────────────────
+```json
+{
+  "type": "compare",
+  "title": "Kobe 2010 Finals vs Tatum 2024 Finals",
+  "players": [
+    {
+      "player_id": 977,
+      "name": "Kobe Bryant",
+      "team": "Los Angeles Lakers",
+      "team_abbr": "LAL",
+      "position": "SG",
+      "headshot_url": "https://cdn.nba.com/headshots/nba/latest/1040x760/977.png",
+      "label": "Kobe 2010 Finals",
+      "season_range": "2009-10 Playoffs",
+      "averages": { ...averages object... }
+    }
+  ],
+  "stat_keys": ["pts","reb","ast","stl","blk","tov","fg_pct","fg3_pct","ft_pct"],
+  "insight": "Cross-era comparison with context about era differences."
+}
+```
+
+─── TYPE: leaderboard ────────────────────────────────────────
+```json
+{
+  "type": "leaderboard",
+  "title": "Points Per Game Leaders — 2025-26 Regular Season",
+  "stat_category": "PTS",
+  "stat_label": "Points Per Game",
+  "season": "2025-26",
+  "season_type": "Regular Season",
+  "per_mode": "PerGame",
+  "leaders": [
+    {
+      "rank": 1,
+      "player_id": 1628369,
+      "name": "Jayson Tatum",
+      "team": "BOS",
+      "headshot_url": "https://cdn.nba.com/headshots/nba/latest/1040x760/1628369.png",
+      "gp": 50,
+      "pts": 27.5,
+      "reb": 8.2,
+      "ast": 4.5,
+      "stl": 1.1,
+      "blk": 0.6,
+      "fg_pct": 47.2,
+      "fg3_pct": 36.1,
+      "stat_value": 27.5
+    }
+  ],
+  "insight": "Brief insight about who leads and any notable trends."
 }
 ```
 
@@ -310,6 +408,10 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
     """
     result_type = result.get("type", "")
 
+    # compare and leaderboard have no game log arrays — pass through unchanged
+    if result_type in ("compare", "leaderboard"):
+        return result
+
     # Collect all tool results by name (preserving order for H2H dual calls)
     vs_team_results   = []
     cond_results      = []
@@ -361,7 +463,12 @@ def _describe_tool(name: str, inp: dict) -> str:
         ids    = inp.get("condition_player_ids", [])
         label  = "H2H active" if active else f"inactive split ({len(ids)} player{'s' if len(ids)>1 else ''})"
         return f"⚖️ Computing {label}…"
-    if name == "get_career_stats": return "📈 Loading career stats…"
+    if name == "get_career_stats":  return "📈 Loading career stats…"
+    if name == "get_multi_player_stats":
+        n = len(inp.get("players", []))
+        return f"📊 Fetching stats for {n} players…"
+    if name == "get_leaderboard":
+        return f"🏆 Loading {inp.get('stat','pts').upper()} leaderboard ({inp.get('season','')})…"
     return f"🔧 {name}"
 
 

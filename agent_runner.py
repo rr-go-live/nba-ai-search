@@ -133,12 +133,23 @@ If the issue is unclear or cannot be completed safely, return:
     )
 
     raw = response.content[0].text.strip()
-
-    # Strip markdown code fences if Claude wrapped the JSON
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
+    start = raw.find('{')
+    end   = raw.rfind('}') + 1
+    raw   = raw[start:end]
 
-    return json.loads(raw)
+    # Remove invalid control characters that break json.loads
+    raw = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', raw)
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # Fallback: let Python's ast literal eval handle it
+        import ast
+        # Replace literal newlines inside strings with \n
+        raw = re.sub(r'(?<!\\)\n', '\\n', raw)
+        return json.loads(raw)
 
 
 # ── Step 4: Apply file changes ────────────────────────────────────────────────

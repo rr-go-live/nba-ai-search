@@ -1,0 +1,46 @@
+name: Agent — Complete Issue
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  run-agent:
+    # Only fires when the label "agent-run" is added
+    if: github.event.label.name == 'agent-run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.AGENT_GH_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install anthropic requests
+
+      - name: Configure git
+        run: |
+          git config user.name  "agent-bot"
+          git config user.email "agent-bot@users.noreply.github.com"
+
+      - name: Run agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.AGENT_GH_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE:  ${{ github.event.issue.title }}
+          REPO:         ${{ github.repository }}
+        run: python agent_runner.py

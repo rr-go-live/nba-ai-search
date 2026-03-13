@@ -139,17 +139,13 @@ If the issue is unclear or cannot be completed safely, return:
     end   = raw.rfind('}') + 1
     raw   = raw[start:end]
 
-    # Remove invalid control characters that break json.loads
     raw = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', raw)
 
     try:
-        return json.loads(raw)
+        return json.loads(raw, strict=False)
     except json.JSONDecodeError:
-        # Fallback: let Python's ast literal eval handle it
-        import ast
-        # Replace literal newlines inside strings with \n
         raw = re.sub(r'(?<!\\)\n', '\\n', raw)
-        return json.loads(raw)
+        return json.loads(raw, strict=False)
 
 # ── Step 4: Apply file changes ────────────────────────────────────────────────
 def apply_changes(result):

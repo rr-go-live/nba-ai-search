@@ -98,7 +98,7 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .h2h-stat:last-child { border-bottom: none; }
 .h2h-slbl { font-size: .64rem; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
 .h2h-sval { font-family: 'Barlow Condensed', sans-serif; font-size: 1.45rem; font-weight: 700; }
-.h2h-sval.better { color: var(--win); }
+.h2h-sval.better { /* color set inline per player's team color */ }
 
 /* Split (conditional) */
 .split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px; }
@@ -398,8 +398,13 @@ function renderVsTeam(d, c) {
   var avg = d.averages || {};
   var splits = d.season_splits || [];
   var log = d.game_log || [];
+  // Opponent name uses opponent's own team color
+  var oppAbbr = d.opponent ? d.opponent.abbreviation : '';
+  var oppColor = teamColor(oppAbbr);
   var rightHtml = '<div class="vs-badge">VS</div>'
-    + '<div class="opp-name">' + (d.opponent ? (d.opponent.name || d.opponent.abbreviation || '') : '') + '</div>';
+    + '<div class="opp-name" style="color:' + oppColor + '">'
+    + (d.opponent ? (d.opponent.name || d.opponent.abbreviation || '') : '')
+    + '</div>';
 
   c.innerHTML = playerHeaderHtml(d.player, rightHtml, [
     '<div class="meta-tag">Seasons <span>' + (d.season_range || '') + '</span></div>',
@@ -495,7 +500,8 @@ function renderH2H(d, c) {
     ['FG%','fg_pct'], ['3P%','fg3_pct'], ['FT%','ft_pct']
   ];
 
-  var statsHtml = function(avgs, otherAvgs) {
+  // statsHtml: playerCol = this player's team color (used for "better" highlight)
+  var statsHtml = function(avgs, otherAvgs, playerCol) {
     return h2hKeys.map(function(pair) {
       var lbl = pair[0], key = pair[1];
       var val   = parseFloat(avgs[key] || 0);
@@ -503,10 +509,11 @@ function renderH2H(d, c) {
       var better = (key === 'tov') ? (val <= other) : (val >= other);
       var diff   = Math.abs(val - other) > 0.001;
       var disp   = key.indexOf('pct') !== -1 ? fmtPct(val) : fmt(val);
-      var cls    = (better && diff) ? 'h2h-sval better' : 'h2h-sval';
+      // Use THIS player's team color for their winning stats, not generic green
+      var style  = (better && diff) ? 'style="color:' + playerCol + '"' : '';
       return '<div class="h2h-stat">'
         + '<span class="h2h-slbl">' + lbl + '</span>'
-        + '<span class="' + cls + '">' + disp + '</span>'
+        + '<span class="h2h-sval" ' + style + '>' + disp + '</span>'
         + '</div>';
     }).join('');
   };
@@ -523,7 +530,7 @@ function renderH2H(d, c) {
     +       '<div><div class="h2h-pname">' + (p.name || '') + '</div>'
     +       '<div class="h2h-team-lbl">' + (p.team || '') + ' &middot; ' + (d.player_games || 0) + ' games</div></div>'
     +     '</div>'
-    +     statsHtml(pAvg, oAvg)
+    +     statsHtml(pAvg, oAvg, pCol)
     +   '</div>'
     +   '<div class="h2h-divider-col"><div class="h2h-vs-circle">VS</div></div>'
     +   '<div class="h2h-card" style="border-top:3px solid ' + oCol + '">'
@@ -532,7 +539,7 @@ function renderH2H(d, c) {
     +       '<div><div class="h2h-pname">' + (op.name || '') + '</div>'
     +       '<div class="h2h-team-lbl">' + (op.team || '') + ' &middot; ' + (d.opponent_games || 0) + ' games</div></div>'
     +     '</div>'
-    +     statsHtml(oAvg, pAvg)
+    +     statsHtml(oAvg, pAvg, oCol)
     +   '</div>'
     + '</div>'
     + '<div class="charts-row">'
@@ -679,8 +686,15 @@ function buildDonuts(containerId, avgA, avgB, labelA, labelB, colA, colB) {
       });
       var vEl = document.getElementById(dn.id + '-v');
       var sEl = document.getElementById(dn.id + '-s');
-      if (vEl) { vEl.textContent = fmtPct(vA); vEl.style.color = cA; }
-      if (sEl) { sEl.textContent = fmtPct(vB); sEl.style.color = cB; }
+      // Always show the BIGGER value as the prominent large number
+      var bigVal, bigCol, smallVal, smallCol;
+      if (vA >= vB) {
+        bigVal = vA; bigCol = cA; smallVal = vB; smallCol = cB;
+      } else {
+        bigVal = vB; bigCol = cB; smallVal = vA; smallCol = cA;
+      }
+      if (vEl) { vEl.textContent = fmtPct(bigVal);   vEl.style.color = bigCol; }
+      if (sEl) { sEl.textContent = fmtPct(smallVal); sEl.style.color = smallCol; }
     } else {
       var fillColor = cA;
       charts[dn.id] = new Chart(context, {

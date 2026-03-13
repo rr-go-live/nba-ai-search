@@ -23,9 +23,9 @@ NBA_API_HEADERS = {
 }
 
 # ── Season strings ────────────────────────────────────────────────────────────
-DEFAULT_SEASON  = "2024-25"
+DEFAULT_SEASON  = "2025-26"
 MIN_YEAR        = 1996
-MAX_YEAR        = 2025
+MAX_YEAR        = 2026
 
 # Build a lookup so "2018" → "2017-18", "2017-18" → "2017-18", etc.
 YEAR_TO_SEASON = {}
@@ -46,4 +46,4 @@ FLASK_PORT = 5000
 
 # ── Data limits ───────────────────────────────────────────────────────────────
 MAX_GAME_LOG_ROWS = 250    # rows returned to frontend in game log
-MAX_SEASONS_SPAN  = 12     # max seasons fetched in multi-season range queries
+MAX_SEASONS_SPAN  = 15     # max seasons fetched in multi-season range queries

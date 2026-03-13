@@ -467,6 +467,26 @@ def get_player_conditional_stats(
     primary_rows = []
     cond_id_sets = {pid: set() for pid in condition_player_ids}
 
+    def _norm_game_id(raw) -> str:
+        """
+        Normalize a Game_ID to a consistent string for set comparisons.
+
+        WHY THIS EXISTS:
+        The NBA API sometimes returns Game_ID as a JSON string ("0022401012")
+        and sometimes as a JSON integer (22401012).  When cast naively with
+        str(), the string form keeps its leading zero while the integer form
+        loses it — so "0022401012" != "22401012" and the intersection is empty.
+
+        Fix: always convert to int (drops any leading zeros) then back to str.
+        Both sides of the comparison use this function so they always agree.
+        """
+        if not raw:
+            return ""
+        try:
+            return str(int(raw))
+        except (ValueError, TypeError):
+            return str(raw).lstrip("0") or "0"
+
     for season in all_seasons:
         try:
             rows = _game_log(player_id, season, season_type)
@@ -479,7 +499,9 @@ def get_player_conditional_stats(
         for cid in condition_player_ids:
             try:
                 crows = _game_log(cid, season, season_type)
-                cond_id_sets[cid].update(str(r.get("Game_ID", "")) for r in crows)
+                cond_id_sets[cid].update(
+                    _norm_game_id(r.get("Game_ID")) for r in crows
+                )
             except Exception as e:
                 logger.warning(f"Condition player {cid} log {season}: {e}")
 
@@ -488,18 +510,18 @@ def get_player_conditional_stats(
 
     if all_active:
         # Intersection: games where ALL condition players appeared
-        matched_ids = set(str(r.get("Game_ID","")) for r in primary_rows)
+        matched_ids = set(_norm_game_id(r.get("Game_ID")) for r in primary_rows)
         for cid_set in cond_id_sets.values():
             matched_ids &= cid_set
-        matched  = [r for r in primary_rows if str(r.get("Game_ID","")) in matched_ids]
-        opposite = [r for r in primary_rows if str(r.get("Game_ID","")) not in matched_ids]
+        matched  = [r for r in primary_rows if _norm_game_id(r.get("Game_ID")) in matched_ids]
+        opposite = [r for r in primary_rows if _norm_game_id(r.get("Game_ID")) not in matched_ids]
     else:
         # Complement of union: games where NONE of the condition players appeared
         union_ids = set()
         for cid_set in cond_id_sets.values():
             union_ids |= cid_set
-        matched  = [r for r in primary_rows if str(r.get("Game_ID","")) not in union_ids]
-        opposite = [r for r in primary_rows if str(r.get("Game_ID","")) in union_ids]
+        matched  = [r for r in primary_rows if _norm_game_id(r.get("Game_ID")) not in union_ids]
+        opposite = [r for r in primary_rows if _norm_game_id(r.get("Game_ID")) in union_ids]
 
     return {
         "primary_averages":    _avg(matched),

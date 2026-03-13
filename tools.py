@@ -189,11 +189,14 @@ def execute_tool(tool_name: str, tool_input: dict) -> dict:
         )
 
     elif tool_name == "get_conditional_stats":
+        # Default season_from to 2012-13 (wide range) so H2H queries never
+        # silently truncate to the current season when Claude omits the range.
+        # Claude can always pass a narrower range explicitly if the user asked for it.
         return nba.get_player_conditional_stats(
             player_id            = tool_input["player_id"],
             condition_player_ids = tool_input["condition_player_ids"],
             all_active           = tool_input["all_active"],
-            season_from          = tool_input.get("season_from", nba.DEFAULT_SEASON),
+            season_from          = tool_input.get("season_from", "2012-13"),
             season_to            = tool_input.get("season_to",   nba.DEFAULT_SEASON),
             opponent_abbr        = tool_input.get("opponent_abbr", ""),
             season_type          = tool_input.get("season_type", "Regular Season"),

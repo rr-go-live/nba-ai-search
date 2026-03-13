@@ -46,6 +46,15 @@ QUERY ROUTING — which tool to use
                all_active=true, opponent_abbr="LAL" (LeBron's team)
   → Output type: "h2h" with player + opponent_player blocks
 
+  H2H SEASON RANGE RULE (critical — do not skip):
+  When no season is specified for H2H, ALWAYS use a WIDE range covering
+  every season both players could have faced each other.
+  Default: season_from="2015-16", season_to="2025-26"
+  NEVER default to just the current season for H2H — you will miss most games.
+  "Tatum vs Brunson H2H"    → season_from="2017-18", season_to="2025-26"
+  "LeBron vs Curry H2H"     → season_from="2012-13", season_to="2025-26"
+  "Tatum vs Brunson H2H this season" → season_from="2025-26", season_to="2025-26"
+
 ▸ Single inactive teammate:
   "Tatum stats when Brown is inactive" / "Tatum without Brown"
   → get_conditional_stats(player_id=tatum, condition_player_ids=[brown_id], all_active=false)
@@ -62,10 +71,10 @@ QUERY ROUTING — which tool to use
 ═══════════════════════════════════════════════════════
 SEASON PARSING
 ═══════════════════════════════════════════════════════
-- "since 2015" / "since 2015-16" → season_from="2015-16", season_to="2024-25"
-- "last 3 years" → season_from="2022-23", season_to="2024-25"
-- "career" → use earliest season player was active, season_to="2024-25"
-- "this season" / "2024-25" → both from and to = "2024-25"
+- "since 2015" / "since 2015-16" → season_from="2015-16", season_to="2025-26"
+- "last 3 years" → season_from="2023-24", season_to="2025-26"
+- "career" → use earliest season player was active, season_to="2025-26"
+- "this season" / "current season" → both from and to = "2025-26"
 - "2018" means the 2017-18 season → "2017-18"
 - "playoffs" → season_type="Playoffs"
 
@@ -193,8 +202,19 @@ class NBAStatsAgent:
         logger.info(f"NBAStatsAgent initialized ({CLAUDE_MODEL})")
 
     def run(self, query: str, progress_cb: Callable[[str, str], None]) -> dict:
-        messages  = [{"role": "user", "content": query}]
-        last_text = ""
+        messages       = [{"role": "user", "content": query}]
+        last_text      = ""
+        # raw_tool_cache stores the complete untruncated result of every tool
+        # call, keyed by tool_use_id.
+        #
+        # WHY THIS EXISTS:
+        # Claude output is capped at AGENT_MAX_TOKENS. A full multi-season game
+        # log (40-80 rows x ~150 tokens each) can exceed that budget — Claude
+        # silently truncates the game_log array in its final JSON to fit.
+        # After we parse Claude's JSON we call _merge_raw_logs() which replaces
+        # the truncated arrays with the full rows from this cache, so the
+        # frontend always receives every game regardless of output length.
+        raw_tool_cache: dict = {}
 
         for iteration in range(1, MAX_AGENT_ITERS + 1):
             logger.info(f"Iteration {iteration}/{MAX_AGENT_ITERS}")
@@ -234,6 +254,16 @@ class NBAStatsAgent:
                         logger.error(f"Tool {block.name}: {e}")
                         result = {"error": str(e)}
                         progress_cb("tool_result", f"⚠️ {block.name}: {e}")
+
+                    # Cache by tool_use_id so two calls to the same tool
+                    # (e.g. both H2H get_conditional_stats calls) are kept
+                    # separately and can each be merged back correctly.
+                    raw_tool_cache[block.id] = {
+                        "name":   block.name,
+                        "input":  block.input,
+                        "result": result,
+                    }
+
                     tool_results.append({
                         "type":        "tool_result",
                         "tool_use_id": block.id,
@@ -245,7 +275,80 @@ class NBAStatsAgent:
 
         result_data = _extract_json(last_text)
         narrative   = _extract_narrative(last_text)
+
+        # Overwrite any truncated game logs with the full rows from the cache.
+        if result_data:
+            result_data = _merge_raw_logs(result_data, raw_tool_cache)
+
         return {"success": bool(result_data), "result": result_data, "narrative": narrative}
+
+
+def _merge_raw_logs(result: dict, cache: dict) -> dict:
+    """
+    _merge_raw_logs(result, cache) -> dict
+    ======================================
+    Replace any game log arrays in Claude's output JSON with the complete
+    untruncated rows stored in raw_tool_cache.
+
+    WHY:
+    Claude writes its final answer as JSON inside its text output, which is
+    capped at AGENT_MAX_TOKENS tokens. A multi-season game log (e.g. LeBron
+    vs Celtics since 2015 = ~44 games) can take 6,000+ tokens to serialise.
+    When that pushes Claude over budget it silently truncates the array,
+    leaving only the most recent N games in its output.
+
+    This function ignores whatever Claude wrote for game log fields and
+    substitutes the authoritative rows that came directly from the NBA API
+    via the tool call result — those were never token-limited.
+
+    MAPPING:
+      vs_team     → game_log       from get_stats_vs_team result
+      conditional → primary_log    from get_conditional_stats result (1st call)
+                    comparison_log from get_conditional_stats result
+      h2h         → player_log     from 1st  get_conditional_stats call
+                    opponent_log   from 2nd get_conditional_stats call
+    """
+    result_type = result.get("type", "")
+
+    # Collect all tool results by name (preserving order for H2H dual calls)
+    vs_team_results   = []
+    cond_results      = []
+
+    for entry in cache.values():
+        name = entry.get("name", "")
+        raw  = entry.get("result", {})
+        if name == "get_stats_vs_team":
+            vs_team_results.append(raw)
+        elif name == "get_conditional_stats":
+            cond_results.append(raw)
+
+    if result_type == "vs_team" and vs_team_results:
+        raw = vs_team_results[-1]
+        if "game_log" in raw:
+            result["game_log"] = raw["game_log"]
+
+    elif result_type == "conditional" and cond_results:
+        raw = cond_results[-1]
+        if "primary_log"    in raw: result["primary_log"]    = raw["primary_log"]
+        if "comparison_log" in raw: result["comparison_log"] = raw["comparison_log"]
+        # Also update game counts so the UI badge is accurate
+        if "primary_games"    in raw: result["primary_games"]    = raw["primary_games"]
+        if "comparison_games" in raw: result["comparison_games"] = raw["comparison_games"]
+
+    elif result_type == "h2h" and len(cond_results) >= 2:
+        # H2H makes two get_conditional_stats calls: Call 1 = primary player,
+        # Call 2 = opponent player. The matched rows ARE the H2H games.
+        result["player_log"]   = cond_results[0].get("primary_log",   result.get("player_log",   []))
+        result["opponent_log"] = cond_results[1].get("primary_log",   result.get("opponent_log", []))
+        result["player_games"]   = cond_results[0].get("primary_games",   result.get("player_games",   0))
+        result["opponent_games"] = cond_results[1].get("primary_games",   result.get("opponent_games", 0))
+
+    elif result_type == "h2h" and len(cond_results) == 1:
+        # Fallback: only one cond call found
+        result["player_log"]   = cond_results[0].get("primary_log",    result.get("player_log",   []))
+        result["opponent_log"] = cond_results[0].get("comparison_log", result.get("opponent_log", []))
+
+    return result
 
 
 def _describe_tool(name: str, inp: dict) -> str:

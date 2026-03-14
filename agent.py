@@ -139,7 +139,12 @@ GENERAL INSIGHT RULES:
   • For splits: quantify the delta (e.g. "+4.2 PPG without Brown").
   • For H2H: note who had the edge and in what categories.
   • TERMINOLOGY: always say "win %" or "win percentage" — NEVER "win rate".
-    e.g. "Tatum's win % in these games was 68%" not "win rate of 68%".
+    e.g. "Tatum's win % in these games was 68%" not "win rate of 68%"
+  • TEAM CONTEXT: always mention which team a player was on for the stats shown.
+    e.g. "Kawhi's 2014 numbers came as a key piece of the San Antonio Spurs,
+    alongside Tim Duncan and Tony Parker" — never just cite numbers in a vacuum.
+  • HISTORICAL COMPARISONS: mention era differences, rule changes, pace of play
+    when comparing players across different decades.
 
 ═══════════════════════════════════════════════════════
 FINAL JSON OUTPUT — output EXACTLY one ```json block
@@ -240,7 +245,7 @@ AVERAGES OBJECT (all fields, use 0.0 for zero values — NEVER null/undefined):
 ```json
 {
   "type": "compare",
-  "title": "Kobe 2010 Finals vs Tatum 2024 Finals",
+  "title": "Kobe 2010 Playoffs vs Tatum 2024 Playoffs",
   "players": [
     {
       "player_id": 977,
@@ -249,15 +254,25 @@ AVERAGES OBJECT (all fields, use 0.0 for zero values — NEVER null/undefined):
       "team_abbr": "LAL",
       "position": "SG",
       "headshot_url": "https://cdn.nba.com/headshots/nba/latest/1040x760/977.png",
-      "label": "Kobe 2010 Finals",
+      "label": "Kobe 2010 Playoffs",
       "season_range": "2009-10 Playoffs",
-      "averages": { ...averages object... }
+      "season_from": "2009-10",
+      "season_to": "2009-10",
+      "season_type": "Playoffs",
+      "averages": { ...averages object... },
+      "series": []
     }
   ],
   "stat_keys": ["pts","reb","ast","stl","blk","tov","fg_pct","fg3_pct","ft_pct"],
   "insight": "Cross-era comparison with context about era differences."
 }
 ```
+
+CRITICAL FOR PLAYOFF COMPARISONS:
+- Always include "season_type": "Playoffs" on every player object
+- Always include "season_from" and "season_to" on every player object
+- Leave "series": [] — the backend will inject series data automatically
+- The frontend uses season_type to decide whether to show the series breakdown UI
 
 ─── TYPE: leaderboard ────────────────────────────────────────
 ```json
@@ -408,8 +423,38 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
     """
     result_type = result.get("type", "")
 
-    # compare and leaderboard have no game log arrays — pass through unchanged
-    if result_type in ("compare", "leaderboard"):
+    # leaderboard has no arrays to merge — pass through unchanged
+    if result_type == "leaderboard":
+        return result
+
+    # compare: inject series + season_type from raw tool cache into each player object.
+    # Claude writes "series": [] in its JSON (as instructed) — we fill it here from
+    # the actual get_multi_player_stats result which contains the full series breakdown.
+    if result_type == "compare":
+        multi_results = [
+            entry["result"]
+            for entry in cache.values()
+            if entry.get("name") == "get_multi_player_stats"
+        ]
+        if multi_results:
+            raw_players = multi_results[-1].get("players", [])
+            result_players = result.get("players", [])
+            for i, rp in enumerate(result_players):
+                if i < len(raw_players):
+                    raw = raw_players[i]
+                    # Inject series breakdown (the main thing Claude can't write)
+                    if raw.get("series"):
+                        rp["series"] = raw["series"]
+                    # Ensure season_type is present — frontend uses it to show series UI
+                    if not rp.get("season_type") and raw.get("season_type"):
+                        rp["season_type"] = raw["season_type"]
+                    if not rp.get("season_from") and raw.get("season_from"):
+                        rp["season_from"] = raw["season_from"]
+                    if not rp.get("season_to") and raw.get("season_to"):
+                        rp["season_to"] = raw["season_to"]
+                    # Backfill team_abbr from raw if Claude left it empty
+                    if not rp.get("team_abbr") and raw.get("team_abbr"):
+                        rp["team_abbr"] = raw["team_abbr"]
         return result
 
     # Collect all tool results by name (preserving order for H2H dual calls)

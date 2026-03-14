@@ -584,6 +584,112 @@ def get_player_conditional_stats(
     }
 
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Playoff series breakdown
+# ─────────────────────────────────────────────────────────────────────────────
+
+ROUND_LABELS = ['R1', 'R2', 'CF', 'Finals']
+
+def _extract_opp(matchup: str) -> str:
+    """
+    Extract opponent abbreviation from a MATCHUP string.
+    'LAL vs. BOS' → 'BOS'    'LAL @ BOS' → 'BOS'
+    """
+    if not matchup:
+        return ''
+    parts = matchup.upper().replace(' VS. ', ' VS ').replace(' @ ', ' @ ').split()
+    # Format is always: TEAM_ABB (vs.|@) OPP_ABB
+    if len(parts) >= 3:
+        return parts[-1]
+    return ''
+
+
+def get_playoff_series_breakdown(
+    player_id:   int,
+    season:      str,
+) -> dict:
+    """
+    Fetch a player's playoff game log for a single season and group it
+    into per-series stats with individual game logs per series.
+
+    WHY THIS EXISTS:
+    A flat playoff game log gives no sense of which round each game belongs to.
+    This function groups games by opponent abbreviation in chronological order —
+    each unique opponent = one series. The first series = R1, second = R2, etc.
+    up to a maximum of 4 rounds (Finals).
+
+    RETURNS:
+      {
+        "series": [
+          {
+            "round_label": "R1",        # R1 / R2 / CF / Finals
+            "opponent":    "OKC",       # opponent abbreviation
+            "games":       6,           # games played in series
+            "result":      "W 4-2",     # series result
+            "averages":    { pts, reb, ast, ... },
+            "game_log":    [ { ...row... }, ... ]
+          },
+          ...
+        ],
+        "overall_averages": { ... },
+        "total_games": N
+      }
+    """
+    try:
+        rows = _game_log(player_id, season, "Playoffs")
+    except Exception as e:
+        logger.warning(f"playoff game log {player_id} {season}: {e}")
+        return {"series": [], "overall_averages": {}, "total_games": 0}
+
+    if not rows:
+        return {"series": [], "overall_averages": {}, "total_games": 0}
+
+    # Sort oldest → newest so series appear in round order
+    # GAME_DATE is 'OCT 22, 2024' format — sort by season+date
+    from datetime import datetime as dt
+    def _sort_key(r):
+        raw = (r.get("GAME_DATE") or "").strip().title()
+        try:
+            return dt.strptime(raw, "%b %d, %Y")
+        except Exception:
+            return dt(2000, 1, 1)
+
+    rows_sorted = sorted(rows, key=_sort_key)
+
+    # Group into series by opponent — preserve insertion order (Python 3.7+)
+    series_map: dict = {}   # opp_abbr -> list of rows
+    for r in rows_sorted:
+        opp = _extract_opp(r.get("MATCHUP", ""))
+        if opp not in series_map:
+            series_map[opp] = []
+        series_map[opp].append(r)
+
+    series_list = []
+    for idx, (opp, s_rows) in enumerate(series_map.items()):
+        avgs = _avg(s_rows)
+        wins   = sum(1 for r in s_rows if r.get("WL") == "W")
+        losses = len(s_rows) - wins
+        result = f"W {wins}-{losses}" if wins > losses else f"L {wins}-{losses}"
+        round_label = ROUND_LABELS[idx] if idx < len(ROUND_LABELS) else f"R{idx+1}"
+        series_list.append({
+            "round_label": round_label,
+            "opponent":    opp,
+            "games":       len(s_rows),
+            "wins":        wins,
+            "losses":      losses,
+            "result":      result,
+            "averages":    avgs,
+            "game_log":    [_to_row(r) for r in s_rows],
+        })
+
+    return {
+        "series":           series_list,
+        "overall_averages": _avg(rows_sorted),
+        "total_games":      len(rows_sorted),
+    }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Multi-player comparison
 # ─────────────────────────────────────────────────────────────────────────────
@@ -633,6 +739,12 @@ def get_player_season_averages(
     if total_gp == 0:
         return {"error": "No games played in range"}
 
+    # Extract team_abbr from the career stats row for this season range.
+    # This is the authoritative source for historical players (Kobe, Kawhi etc.)
+    # where _player_info_http returns empty string because they are retired.
+    # For multi-team seasons, the last row's abbreviation is used.
+    hist_team_abbr = str(filtered[-1].get("TEAM_ABBREVIATION") or "")
+
     def wp(key):   # weighted per-game value
         return round(
             sum(_safe_float(r.get(key)) * _safe_int(r.get("GP")) for r in filtered) / total_gp, 1
@@ -647,19 +759,20 @@ def get_player_season_averages(
     losses = sum(_safe_int(r.get("L",  0)) for r in filtered)
 
     return {
-        "gp":      total_gp,
-        "pts":     wp("PTS"),
-        "reb":     wp("REB"),
-        "ast":     wp("AST"),
-        "stl":     wp("STL"),
-        "blk":     wp("BLK"),
-        "tov":     wp("TOV"),
-        "fg_pct":  wpct("FG_PCT"),
-        "fg3_pct": wpct("FG3_PCT"),
-        "fg3a":    wp("FG3A"),
-        "ft_pct":  wpct("FT_PCT"),
-        "wins":    wins,
-        "losses":  losses,
+        "gp":        total_gp,
+        "pts":       wp("PTS"),
+        "reb":       wp("REB"),
+        "ast":       wp("AST"),
+        "stl":       wp("STL"),
+        "blk":       wp("BLK"),
+        "tov":       wp("TOV"),
+        "fg_pct":    wpct("FG_PCT"),
+        "fg3_pct":   wpct("FG3_PCT"),
+        "fg3a":      wp("FG3A"),
+        "ft_pct":    wpct("FT_PCT"),
+        "wins":      wins,
+        "losses":    losses,
+        "team_abbr": hist_team_abbr,   # from career stats row for this season
         "seasons_found": [str(r.get("SEASON_ID", "")) for r in filtered],
     }
 
@@ -698,18 +811,35 @@ def get_multi_player_stats(
         try:
             avgs = get_player_season_averages(pid, season_from, season_to, season_type)
             info = get_player_info(pid)
+            # For historical/retired players, _player_info_http returns empty
+            # team_abbr. Fall back to the team_abbr embedded in the career
+            # stats row for the requested season — this is always accurate.
+            hist_abbr = avgs.get("team_abbr", "") if isinstance(avgs, dict) else ""
+            team_abbr = info.get("team_abbr", "") or hist_abbr
+
+            # For playoff comparisons, fetch series-level breakdown so the
+            # frontend can show per-round stats and per-series game logs.
+            # Only fetch if a single season is requested (playoff runs are
+            # season-specific — multi-season playoff aggregates don't have
+            # meaningful per-series breakdown).
+            series_data = None
+            if season_type == "Playoffs" and season_from == season_to:
+                series_data = get_playoff_series_breakdown(pid, season_from)
+
             results.append({
-                "player_id":   pid,
-                "name":        info.get("full_name", label or f"Player {pid}"),
-                "team":        info.get("team", ""),
-                "team_abbr":   info.get("team_abbr", ""),
-                "position":    info.get("position", ""),
+                "player_id":    pid,
+                "name":         info.get("full_name", label or f"Player {pid}"),
+                "team":         info.get("team", ""),
+                "team_abbr":    team_abbr,
+                "position":     info.get("position", ""),
                 "headshot_url": info.get("headshot_url", headshot_url(pid)),
-                "label":       label,
-                "season_from": season_from,
-                "season_to":   season_to,
-                "season_type": season_type,
-                "averages":    avgs,
+                "label":        label,
+                "season_from":  season_from,
+                "season_to":    season_to,
+                "season_type":  season_type,
+                "averages":     avgs,
+                "series":       series_data.get("series", []) if series_data else [],
+                "playoff_games": series_data.get("total_games", 0) if series_data else 0,
             })
         except Exception as e:
             logger.warning(f"get_multi_player_stats player {pid}: {e}")

@@ -956,9 +956,8 @@ def get_leaderboard(
             )
         except Exception as e:
             logger.error(f"leagueleaders {category} {cand}: {e}")
-            # Do not abort on the requested season. Some future/in-progress
-            # seasons intermittently error while prior seasons are available.
-            # Continue through the fallback chain and only fail if all fail.
+            if cand == requested_season:
+                return {"error": str(e), "leaders": []}
             continue
 
         rows = data.get("LeagueLeaders", [])
@@ -974,7 +973,6 @@ def get_leaderboard(
             "season_requested": requested_season,
             "season": requested_season,
             "season_fallback_used": False,
-            "season_options": season_chain,
         }
 
     leaders = []

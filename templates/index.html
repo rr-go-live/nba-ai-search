@@ -148,9 +148,13 @@ thead th { padding: 8px 10px; text-align: left; font-size: .58rem; letter-spacin
 thead th:hover { color: var(--text); }
 .s-asc::after { content: ' \2191'; color: var(--tp); }
 .s-desc::after { content: ' \2193'; color: var(--tp); }
-tbody tr { border-bottom: 1px solid rgba(255,255,255,.03); transition: background .1s; }
-tbody tr:hover { background: rgba(255,255,255,.02); }
-tbody td { padding: 8px 10px; white-space: nowrap; }
+tbody tr { border-bottom: 1px solid rgba(255,255,255,.03); transition: background .15s ease, transform .15s ease; }
+tbody tr:hover { background: rgba(255,255,255,.04); transform: scale(1.012); }
+tbody td { padding: 8px 10px; white-space: nowrap; transition: font-size .15s ease, color .15s ease; }
+.log-section tbody tr:hover td { font-size: .84rem; }
+.log-section tbody tr:hover .pts-cell { font-size: 1.15rem; }
+.log-detail { display: block; margin-top: 3px; font-size: .6rem; color: var(--muted); transition: color .15s ease; }
+.log-section tbody tr:hover .log-detail { color: #9dadc8; }
 .rw { color: var(--win); font-weight: 500; }
 .rl { color: var(--loss); }
 .pts-cell { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 700; color: var(--tp); }
@@ -1133,8 +1137,12 @@ function gameLogHtml(rows, sortCol, sortDir) {
       + '<td>' + (g.stl || 0) + '</td>'
       + '<td>' + (g.blk || 0) + '</td>'
       + '<td>' + (g.tov || 0) + '</td>'
-      + '<td>' + fmtPct(g.fg_pct || 0) + '</td>'
-      + '<td>' + fmtPct(g.fg3_pct || 0) + '</td>'
+      + '<td>' + fmtPct(g.fg_pct || 0)
+      +   '<span class="log-detail">' + (g.fgm || 0) + '/' + (g.fga || 0) + '</span></td>'
+      + '<td>' + fmtPct(g.fg3_pct || 0)
+      +   '<span class="log-detail">' + (g.fg3m || 0) + '/' + (g.fg3a || 0) + '</span></td>'
+      + '<td>' + fmtPct(g.ft_pct || 0)
+      +   '<span class="log-detail">' + (g.ftm || 0) + '/' + (g.fta || 0) + '</span></td>'
       + '<td class="' + pmCls + '">' + pmStr + '</td>'
       + '</tr>';
   });
@@ -1157,8 +1165,9 @@ function gameLogHtml(rows, sortCol, sortDir) {
     + th('STL',     'stl')
     + th('BLK',     'blk')
     + th('TOV',     'tov')
-    + th('FG%',     'fg_pct')
-    + th('3P%',     'fg3_pct')
+    + th('FG% (M/A)', 'fg_pct')
+    + th('3P% (M/A)', 'fg3_pct')
+    + th('FT% (M/A)', 'ft_pct')
     + th('+/-',     'plus_minus')
     + '</tr></thead>'
     + '<tbody>' + tbody + '</tbody>'

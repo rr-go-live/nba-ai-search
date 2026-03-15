@@ -148,9 +148,13 @@ thead th { padding: 8px 10px; text-align: left; font-size: .58rem; letter-spacin
 thead th:hover { color: var(--text); }
 .s-asc::after { content: ' \2191'; color: var(--tp); }
 .s-desc::after { content: ' \2193'; color: var(--tp); }
-tbody tr { border-bottom: 1px solid rgba(255,255,255,.03); transition: background .1s; }
-tbody tr:hover { background: rgba(255,255,255,.02); }
-tbody td { padding: 8px 10px; white-space: nowrap; }
+tbody tr { border-bottom: 1px solid rgba(255,255,255,.03); transition: background .15s ease, transform .15s ease; }
+tbody tr:hover { background: rgba(255,255,255,.04); transform: scale(1.012); }
+tbody td { padding: 8px 10px; white-space: nowrap; transition: font-size .15s ease, color .15s ease; }
+.log-section tbody tr:hover td { font-size: .84rem; }
+.log-section tbody tr:hover .pts-cell { font-size: 1.15rem; }
+.log-detail { display: block; margin-top: 3px; font-size: .6rem; color: var(--muted); transition: color .15s ease; }
+.log-section tbody tr:hover .log-detail { color: #9dadc8; }
 .rw { color: var(--win); font-weight: 500; }
 .rl { color: var(--loss); }
 .pts-cell { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 700; color: var(--tp); }
@@ -1133,8 +1137,12 @@ function gameLogHtml(rows, sortCol, sortDir) {
       + '<td>' + (g.stl || 0) + '</td>'
       + '<td>' + (g.blk || 0) + '</td>'
       + '<td>' + (g.tov || 0) + '</td>'
-      + '<td>' + fmtPct(g.fg_pct || 0) + '</td>'
-      + '<td>' + fmtPct(g.fg3_pct || 0) + '</td>'
+      + '<td>' + fmtPct(g.fg_pct || 0)
+      +   '<span class="log-detail">' + (g.fgm || 0) + '/' + (g.fga || 0) + '</span></td>'
+      + '<td>' + fmtPct(g.fg3_pct || 0)
+      +   '<span class="log-detail">' + (g.fg3m || 0) + '/' + (g.fg3a || 0) + '</span></td>'
+      + '<td>' + fmtPct(g.ft_pct || 0)
+      +   '<span class="log-detail">' + (g.ftm || 0) + '/' + (g.fta || 0) + '</span></td>'
       + '<td class="' + pmCls + '">' + pmStr + '</td>'
       + '</tr>';
   });
@@ -1157,8 +1165,9 @@ function gameLogHtml(rows, sortCol, sortDir) {
     + th('STL',     'stl')
     + th('BLK',     'blk')
     + th('TOV',     'tov')
-    + th('FG%',     'fg_pct')
-    + th('3P%',     'fg3_pct')
+    + th('FG% (M/A)', 'fg_pct')
+    + th('3P% (M/A)', 'fg3_pct')
+    + th('FT% (M/A)', 'ft_pct')
     + th('+/-',     'plus_minus')
     + '</tr></thead>'
     + '<tbody>' + tbody + '</tbody>'
@@ -1492,39 +1501,71 @@ function renderLeaderboard(d, c) {
   var statLbl = d.stat_label || d.stat_category || 'PTS';
   var fillColor = getComputedStyle(document.documentElement).getPropertyValue('--tp').trim() || '#f7941d';
 
-  // Header
-  var html = '<div style="padding:28px 0 20px;border-bottom:1px solid var(--border);margin-bottom:28px">'
+  var teams = Array.from(new Set(leaders.map(function(r) { return r.team || 'TOT'; }))).sort();
+  var fallbackNote = d.season_fallback_used
+    ? '<div style="font-size:.68rem;color:#9dadc8;margin-top:8px">No data yet for ' + (d.season_requested || d.season) + '. Showing latest available season: <span style="color:var(--tp)">' + (d.season || '') + '</span>.</div>'
+    : '';
+
+  var html = '<div style="padding:28px 0 20px;border-bottom:1px solid var(--border);margin-bottom:20px">'
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.7rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Leaderboard</div>'
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:2.2rem;font-weight:900;line-height:1.1">' + (d.title || statLbl + ' Leaders') + '</div>'
     + '<div style="font-size:.75rem;color:var(--muted);margin-top:6px">' + (d.season || '') + ' &middot; ' + (d.season_type || '') + ' &middot; ' + (d.per_mode === 'Totals' ? 'Totals' : 'Per Game') + '</div>'
+    + fallbackNote
     + '</div>'
     + insightHtml(d.insight);
 
-  // Bar chart of top players
+  var top3 = leaders.slice(0, 3);
+  if (top3.length) {
+    html += '<div id="lb-top3" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:18px">';
+    top3.forEach(function(row, i) {
+      var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
+      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;gap:10px;align-items:center">'
+        + '<img src="' + (row.headshot_url || hsUrl(row.player_id)) + '" onerror="this.style.display=\'none\'" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid var(--tp)">'
+        + '<div style="min-width:0"><div style="font-size:.65rem;color:var(--muted)">' + medal + ' #' + row.rank + '</div>'
+        + '<div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (row.name || '') + '</div>'
+        + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;color:var(--tp);line-height:1">' + fmt(row.stat_value) + '</div></div></div>';
+    });
+    html += '</div>';
+  }
+
+  html += '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:16px">'
+    + '<label style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Team<br><select id="lb-team-filter" style="margin-top:4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px"><option value="all">All</option>'
+    + teams.map(function(t){ return '<option value="' + t + '">' + t + '</option>'; }).join('')
+    + '</select></label>'
+    + '<label style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Min GP: <span id="lb-gp-val">0</span><br><input id="lb-gp-filter" type="range" min="0" max="82" value="0" style="margin-top:8px"></label>'
+    + '<label style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Top N: <span id="lb-topn-val">' + Math.min(10, leaders.length) + '</span><br><input id="lb-topn-filter" type="range" min="3" max="' + Math.max(3, leaders.length) + '" value="' + Math.min(10, leaders.length) + '" style="margin-top:8px"></label>'
+    + '</div>';
+
   html += '<div class="charts-row"><div class="chart-card full">'
-    + '<div class="chart-title">' + statLbl.toUpperCase() + ' — Top ' + leaders.length + '</div>'
+    + '<div class="chart-title" id="lb-chart-title">' + statLbl.toUpperCase() + ' — Top ' + leaders.length + '</div>'
     + '<div class="chart-wrap" style="height:260px"><canvas id="chart-lb"></canvas></div>'
     + '</div></div>';
 
-  // Leaderboard table
   html += '<div style="overflow-x:auto;margin-bottom:32px">'
     + '<table style="width:100%;border-collapse:collapse;font-size:.8rem">'
     + '<thead><tr>'
     + ['#','Player','Team','GP',statLbl.toUpperCase(),'PPG','RPG','APG','SPG','BPG','FG%','3P%'].map(function(h) {
         return '<th style="text-align:' + (h==='Player'?'left':'right') + ';padding:8px 10px;color:var(--muted);font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;border-bottom:1px solid var(--border)">' + h + '</th>';
       }).join('')
-    + '</tr></thead><tbody>';
+    + '</tr></thead><tbody id="lb-tbody"></tbody></table></div>';
 
-  leaders.forEach(function(row) {
-    var isTop3 = row.rank <= 3;
-    var rankColor = row.rank === 1 ? '#FFD700' : row.rank === 2 ? '#C0C0C0' : row.rank === 3 ? '#CD7F32' : 'var(--muted)';
-    var hs = row.headshot_url || hsUrl(row.player_id);
-    html += '<tr style="border-bottom:1px solid rgba(255,255,255,.03)">'
+  c.innerHTML = html;
+
+  function renderRows(filtered) {
+    var tbody = document.getElementById('lb-tbody');
+    if (!tbody) return;
+    if (!filtered.length) {
+      tbody.innerHTML = '<tr><td colspan="12" style="padding:14px 10px;color:var(--muted)">No players match current filters.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = filtered.map(function(row, idx) {
+      var rankColor = row.rank === 1 ? '#FFD700' : row.rank === 2 ? '#C0C0C0' : row.rank === 3 ? '#CD7F32' : 'var(--muted)';
+      var hs = row.headshot_url || hsUrl(row.player_id);
+      return '<tr style="border-bottom:1px solid rgba(255,255,255,.03)">' 
       + '<td style="padding:8px 10px;font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;font-weight:900;color:' + rankColor + '">' + row.rank + '</td>'
-      + '<td style="padding:8px 10px;text-align:left">'
-      +   '<div style="display:flex;align-items:center;gap:10px">'
-      +   '<img src="' + hs + '" onerror="this.style.display=\'none\'" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0">'
-      +   '<span style="font-weight:500">' + (row.name || '') + '</span></div></td>'
+      + '<td style="padding:8px 10px;text-align:left"><div style="display:flex;align-items:center;gap:10px">'
+      + '<img src="' + hs + '" onerror="this.style.display=\'none\'" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0">'
+      + '<span style="font-weight:500">' + (row.name || '') + '</span></div></td>'
       + '<td style="text-align:right;padding:8px 10px;color:var(--muted);font-size:.75rem">' + (row.team || '') + '</td>'
       + '<td style="text-align:right;padding:8px 10px">' + (row.gp || 0) + '</td>'
       + '<td style="text-align:right;padding:8px 10px;font-family:\'Barlow Condensed\',sans-serif;font-size:1.4rem;font-weight:900;color:' + fillColor + '">' + fmt(row.stat_value) + '</td>'
@@ -1534,43 +1575,51 @@ function renderLeaderboard(d, c) {
       + '<td style="text-align:right;padding:8px 10px">' + fmt(row.stl) + '</td>'
       + '<td style="text-align:right;padding:8px 10px">' + fmt(row.blk) + '</td>'
       + '<td style="text-align:right;padding:8px 10px">' + fmtPct(row.fg_pct) + '</td>'
-      + '<td style="text-align:right;padding:8px 10px">' + fmtPct(row.fg3_pct) + '</td>'
-      + '</tr>';
-  });
+      + '<td style="text-align:right;padding:8px 10px">' + fmtPct(row.fg3_pct) + '</td></tr>';
+    }).join('');
+  }
 
-  html += '</tbody></table></div>';
-  c.innerHTML = html;
-
-  // Horizontal bar chart
-  destroyChart('chart-lb');
-  var ctx = document.getElementById('chart-lb');
-  if (ctx && leaders.length) {
-    var vals   = leaders.map(function(r) { return r.stat_value; });
-    var lbls   = leaders.map(function(r) { return r.name.split(' ').pop(); }); // last name
-    var bgCols = leaders.map(function(r, i) {
+  function renderChart(filtered) {
+    destroyChart('chart-lb');
+    var ctx = document.getElementById('chart-lb');
+    var title = document.getElementById('lb-chart-title');
+    if (title) title.textContent = statLbl.toUpperCase() + ' — Top ' + filtered.length;
+    if (!ctx || !filtered.length) return;
+    var vals = filtered.map(function(r) { return r.stat_value; });
+    var lbls = filtered.map(function(r) { return (r.name || '').split(' ').pop(); });
+    var bgCols = filtered.map(function(_, i) {
       var alpha = Math.max(0.4, 1 - i * 0.06);
       return fillColor + Math.round(alpha * 255).toString(16).padStart(2,'0');
     });
     charts['chart-lb'] = new Chart(ctx.getContext('2d'), {
       type: 'bar',
-      data: {
-        labels: lbls,
-        datasets: [{
-          label: statLbl,
-          data: vals,
-          backgroundColor: bgCols,
-          borderRadius: 4
-        }]
-      },
-      options: Object.assign(baseOpts(), {
-        indexAxis: 'x',
-        plugins: {
-          legend: { display: false },
-          tooltip: tooltipOpts()
-        }
-      })
+      data: { labels: lbls, datasets: [{ label: statLbl, data: vals, backgroundColor: bgCols, borderRadius: 4 }] },
+      options: Object.assign(baseOpts(), { plugins: { legend: { display: false }, tooltip: tooltipOpts() } })
     });
   }
+
+  function applyFilters() {
+    var teamSel = document.getElementById('lb-team-filter');
+    var gpInput = document.getElementById('lb-gp-filter');
+    var topInput = document.getElementById('lb-topn-filter');
+    var gp = parseInt(gpInput ? gpInput.value : '0', 10) || 0;
+    var topN = parseInt(topInput ? topInput.value : String(leaders.length), 10) || leaders.length;
+    if (document.getElementById('lb-gp-val')) document.getElementById('lb-gp-val').textContent = gp;
+    if (document.getElementById('lb-topn-val')) document.getElementById('lb-topn-val').textContent = topN;
+    var filtered = leaders.filter(function(r) {
+      var teamPass = !teamSel || teamSel.value === 'all' || (r.team || 'TOT') === teamSel.value;
+      return teamPass && (r.gp || 0) >= gp;
+    }).slice(0, topN);
+    renderRows(filtered);
+    renderChart(filtered);
+  }
+
+  ['lb-team-filter','lb-gp-filter','lb-topn-filter'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', applyFilters);
+  });
+
+  applyFilters();
 }
 
 

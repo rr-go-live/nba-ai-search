@@ -883,6 +883,22 @@ STAT_CATEGORY_MAP = {
 }
 
 
+def _season_fallback_chain(season: str, depth: int = 4) -> list:
+    """Return [requested, previous...] canonical seasons for fallback queries."""
+    canon = parse_season(season)
+    try:
+        start = int(canon.split('-')[0])
+    except Exception:
+        start = int(DEFAULT_SEASON.split('-')[0])
+    out = []
+    for i in range(max(depth, 1)):
+        y = start - i
+        if y < MIN_YEAR:
+            break
+        out.append(f"{y}-{str(y + 1)[-2:]}")
+    return out
+
+
 def get_leaderboard(
     stat:        str = "pts",
     season:      str = DEFAULT_SEASON,
@@ -918,25 +934,46 @@ def get_leaderboard(
 
     top_n = min(max(top_n, 1), 25)
 
-    try:
-        time.sleep(NBA_API_DELAY)
-        data = nba_http.get_parsed(
-            "leagueleaders",
-            params={
-                "LeagueID":    "00",
-                "PerMode":     per_mode,
-                "Scope":       "S",
-                "Season":      season,
-                "SeasonType":  season_type,
-                "StatCategory": category,
-            },
-            timeout=NBA_API_TIMEOUT,
-        )
-    except Exception as e:
-        logger.error(f"leagueleaders {category} {season}: {e}")
-        return {"error": str(e), "leaders": []}
+    requested_season = parse_season(season)
+    season_chain = _season_fallback_chain(requested_season, depth=5)
+    used_season = requested_season
+    raw_rows = []
 
-    raw_rows = data.get("LeagueLeaders", [])[:top_n]
+    for cand in season_chain:
+        try:
+            time.sleep(NBA_API_DELAY)
+            data = nba_http.get_parsed(
+                "leagueleaders",
+                params={
+                    "LeagueID":    "00",
+                    "PerMode":     per_mode,
+                    "Scope":       "S",
+                    "Season":      cand,
+                    "SeasonType":  season_type,
+                    "StatCategory": category,
+                },
+                timeout=NBA_API_TIMEOUT,
+            )
+        except Exception as e:
+            logger.error(f"leagueleaders {category} {cand}: {e}")
+            if cand == requested_season:
+                return {"error": str(e), "leaders": []}
+            continue
+
+        rows = data.get("LeagueLeaders", [])
+        if rows:
+            raw_rows = rows[:top_n]
+            used_season = cand
+            break
+
+    if not raw_rows:
+        return {
+            "error": f"No leaderboard data available for {requested_season} or fallback seasons.",
+            "leaders": [],
+            "season_requested": requested_season,
+            "season": requested_season,
+            "season_fallback_used": False,
+        }
 
     leaders = []
     for rank, r in enumerate(raw_rows, 1):
@@ -961,7 +998,10 @@ def get_leaderboard(
     return {
         "stat_category": category,
         "stat_label":    stat,
-        "season":        season,
+        "season":        used_season,
+        "season_requested": requested_season,
+        "season_fallback_used": used_season != requested_season,
+        "season_options": season_chain,
         "season_type":   season_type,
         "per_mode":      per_mode,
         "leaders":       leaders,

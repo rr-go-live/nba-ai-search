@@ -932,6 +932,74 @@ def _season_fallback_chain(season: str, depth: int = 4) -> list:
     return out
 
 
+def _get_leaderboard_leaguedash(
+    season: str,
+    season_type: str,
+    per_mode: str,
+    category: str,
+    top_n: int,
+) -> list:
+    """
+    Fallback leaderboard using LeagueDashPlayerStats (nba_api endpoint).
+    Returns rows in leagueleaders column format so get_leaderboard() can
+    process them without branching.  Used when leagueleaders returns nothing
+    for 2025-26 (endpoint often lags behind the live season).
+    """
+    try:
+        from nba_api.stats.endpoints import leaguedashplayerstats
+
+        per_mode_map  = {"PerGame": "PerGame", "Totals": "Totals"}
+        nba_per_mode  = per_mode_map.get(per_mode, "PerGame")
+
+        season_type_map = {"Regular Season": "Regular Season", "Playoffs": "Playoffs"}
+        nba_season_type = season_type_map.get(season_type, "Regular Season")
+
+        time.sleep(NBA_API_DELAY)
+        df = leaguedashplayerstats.LeagueDashPlayerStats(
+            season=season,
+            season_type_all_star=nba_season_type,
+            per_mode_detailed=nba_per_mode,
+        ).get_data_frames()[0]
+
+        if df.empty:
+            return []
+
+        col = category
+        if category == "EFF":
+            df["EFF"] = (
+                df["PTS"] + df["REB"] + df["AST"] + df["STL"] + df["BLK"]
+                - (df["FGA"] - df["FGM"]) - (df["FTA"] - df["FTM"]) - df["TOV"]
+            )
+        elif col not in df.columns:
+            logger.warning(f"LeagueDash fallback: column '{col}' not in dataframe")
+            return []
+
+        df_sorted = df.sort_values(col, ascending=False).head(top_n).reset_index(drop=True)
+
+        rows = []
+        for _, r in df_sorted.iterrows():
+            rows.append({
+                "PLAYER_ID": r.get("PLAYER_ID"),
+                "PLAYER":    r.get("PLAYER_NAME", ""),
+                "TEAM":      r.get("TEAM_ABBREVIATION", ""),
+                "GP":        r.get("GP"),
+                "PTS":       r.get("PTS"),
+                "REB":       r.get("REB"),
+                "AST":       r.get("AST"),
+                "STL":       r.get("STL"),
+                "BLK":       r.get("BLK"),
+                "FG_PCT":    r.get("FG_PCT"),
+                "FG3_PCT":   r.get("FG3_PCT"),
+                col:         r.get(col),
+            })
+        logger.info(f"LeagueDash fallback: {len(rows)} rows for {season} {category}")
+        return rows
+
+    except Exception as e:
+        logger.warning(f"LeagueDash leaderboard fallback failed ({season}): {e}")
+        return []
+
+
 def get_leaderboard(
     stat:        str = "pts",
     season:      str = DEFAULT_SEASON,
@@ -989,8 +1057,6 @@ def get_leaderboard(
             )
         except Exception as e:
             logger.error(f"leagueleaders {category} {cand}: {e}")
-            if cand == requested_season:
-                return {"error": str(e), "leaders": []}
             continue
 
         rows = data.get("LeagueLeaders", [])
@@ -998,6 +1064,20 @@ def get_leaderboard(
             raw_rows = rows[:top_n]
             used_season = cand
             break
+
+    # For 2025-26, leagueleaders often lags behind the live season.
+    # Fall back to LeagueDashPlayerStats which is updated more frequently.
+    if not raw_rows and requested_season >= "2025-26" and season_type == "Regular Season":
+        logger.info(f"Trying LeagueDash fallback for {requested_season} {category} leaderboard")
+        raw_rows = _get_leaderboard_leaguedash(
+            season=requested_season,
+            season_type=season_type,
+            per_mode=per_mode,
+            category=category,
+            top_n=top_n,
+        )
+        if raw_rows:
+            used_season = requested_season
 
     if not raw_rows:
         return {

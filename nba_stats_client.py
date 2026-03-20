@@ -216,19 +216,52 @@ def seasons_between(s_from: str, s_to: str) -> list:
 
 def _game_log(player_id: int, season: str,
               season_type: str = "Regular Season") -> list:
-    """One season's game log via cookie session. Injects SEASON tag on each row."""
-    time.sleep(NBA_API_DELAY)
-    data = nba_http.get_parsed(
-        "playergamelog",
-        params={"PlayerID": player_id, "Season": season,
-                "SeasonType": season_type, "LeagueID": "00",
-                "DateFrom": "", "DateTo": ""},
-        timeout=NBA_API_TIMEOUT,
-    )
-    rows = data.get("PlayerGameLog", [])
-    for row in rows:
-        row["SEASON"] = season
-    return rows
+    """
+    One season's game log. Tries stats.nba.com first via the cookie session.
+    Falls back to Basketball Reference for seasons >= 2025-26 when the NBA
+    API returns empty data or raises an exception (e.g. season not yet live).
+    """
+    try:
+        time.sleep(NBA_API_DELAY)
+        data = nba_http.get_parsed(
+            "playergamelog",
+            params={"PlayerID": player_id, "Season": season,
+                    "SeasonType": season_type, "LeagueID": "00",
+                    "DateFrom": "", "DateTo": ""},
+            timeout=NBA_API_TIMEOUT,
+        )
+        rows = data.get("PlayerGameLog", [])
+        for row in rows:
+            row["SEASON"] = season
+        if rows:
+            return rows
+    except Exception as e:
+        logger.warning(f"NBA API game log {player_id} {season}: {e}")
+
+    # Fallback: try Basketball Reference for current/future seasons
+    if season >= "2025-26" and season_type == "Regular Season":
+        return _game_log_bbref(player_id, season)
+
+    return []
+
+
+def _game_log_bbref(player_id: int, season: str) -> list:
+    """Fetch game log from Basketball Reference for the given player/season."""
+    import bbref_client
+
+    player = static_players.find_player_by_id(player_id)
+    if not player:
+        logger.warning(f"BBRef fallback: no static player found for ID {player_id}")
+        return []
+
+    name = player.get("full_name", "")
+    bbref_id = bbref_client.find_bbref_id(name)
+    if not bbref_id:
+        logger.warning(f"BBRef fallback: could not resolve BBRef ID for '{name}'")
+        return []
+
+    season_end_year = int(season.split("-")[0]) + 1  # "2025-26" → 2026
+    return bbref_client.get_game_log(bbref_id, season_end_year)
 
 
 def _career_stats_raw(player_id: int) -> dict:

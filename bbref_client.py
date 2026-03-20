@@ -212,6 +212,125 @@ def _bbref_row_to_nba_format(r: dict, season: str) -> dict:
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
 
+def get_leaderboard(
+    stat:           str,
+    season_end_year: int,
+    per_mode:       str = "PerGame",
+    top_n:          int = 10,
+) -> list:
+    """
+    Scrape league-wide stat leaders from Basketball Reference.
+
+    Returns a list of up to top_n dicts sorted descending by stat value:
+      {name, bbref_id, team, gp, pts, reb, ast, stl, blk, fg_pct, fg3_pct, stat_value}
+
+    stat should be an NBA API category string like 'PTS', 'REB', 'AST', etc.
+    """
+    # Map NBA API category → BBRef data-stat column name
+    _PERGAME_COL = {
+        "PTS": "pts_per_g", "REB": "trb_per_g", "AST": "ast_per_g",
+        "STL": "stl_per_g", "BLK": "blk_per_g", "FG3M": "fg3_per_g",
+        "EFF": "pts_per_g",
+    }
+    _TOTALS_COL = {
+        "PTS": "pts", "REB": "trb", "AST": "ast",
+        "STL": "stl", "BLK": "blk", "FG3M": "fg3",
+        "EFF": "pts",
+    }
+
+    is_pergame  = per_mode.lower() != "totals"
+    col_map     = _PERGAME_COL if is_pergame else _TOTALS_COL
+    stat_col    = col_map.get(stat.upper(), "pts_per_g" if is_pergame else "pts")
+    page_suffix = "per_game" if is_pergame else "totals"
+    table_id    = "per_game_stats" if is_pergame else "totals_stats"
+    url = f"{BBREF_BASE}/leagues/NBA_{season_end_year}_{page_suffix}.html"
+
+    try:
+        time.sleep(BBREF_DELAY)
+        resp = _get_session().get(url, timeout=20)
+        if resp.status_code == 429:
+            logger.warning("BBRef rate-limited on leaderboard fetch")
+            return []
+        if resp.status_code != 200:
+            logger.warning(f"BBRef leaderboard HTTP {resp.status_code} for {url}")
+            return []
+
+        rows = _parse_leaderboard_table(resp.text, table_id, stat_col)
+        rows.sort(key=lambda r: r.get("stat_value", 0.0), reverse=True)
+        logger.info(f"BBRef leaderboard {stat} {season_end_year}: {len(rows)} players scraped")
+        return rows[:top_n]
+
+    except Exception as e:
+        logger.warning(f"BBRef leaderboard fetch failed ({stat} {season_end_year}): {e}")
+        return []
+
+
+def _parse_leaderboard_table(html: str, table_id: str, stat_col: str) -> list:
+    """
+    Parse a BBRef season stats table (per_game_stats or totals_stats).
+
+    Skips repeated header rows and deduplicates traded players (BBRef shows
+    a combined 'TOT' row plus separate per-team rows — we keep only the first
+    occurrence of each name, which is the TOT row when the table is sorted).
+    """
+    rows = []
+    seen: set = set()
+
+    tbody_m = re.search(
+        rf'<table[^>]+id="{table_id}"[^>]*>.*?<tbody>(.*?)</tbody>',
+        html, re.DOTALL | re.IGNORECASE,
+    )
+    if not tbody_m:
+        logger.warning(f"BBRef: #{table_id} table not found in response")
+        return rows
+
+    for tr_m in re.finditer(r'<tr\b([^>]*)>(.*?)</tr>', tbody_m.group(1), re.DOTALL):
+        if "thead" in tr_m.group(1):
+            continue
+        tr_body = tr_m.group(2)
+
+        cell: dict = {}
+        bbref_id   = None
+
+        for td_m in re.finditer(r'<td\b[^>]+data-stat="([^"]+)"[^>]*>(.*?)</td>', tr_body, re.DOTALL):
+            key   = td_m.group(1)
+            inner = td_m.group(2)
+            text  = re.sub(r"<[^>]+>", "", inner).strip()
+            cell[key] = text
+            if key == "player":
+                href_m = re.search(r'/players/[a-z]/([a-z0-9]+)\.html', inner)
+                if href_m:
+                    bbref_id = href_m.group(1)
+
+        name = cell.get("player", "").strip()
+        if not name or not bbref_id:
+            continue
+        if name in seen:          # skip per-team duplicate rows for traded players
+            continue
+        seen.add(name)
+
+        stat_raw = cell.get(stat_col, "")
+        if not stat_raw:
+            continue
+
+        rows.append({
+            "name":       name,
+            "bbref_id":   bbref_id,
+            "team":       cell.get("team_id", ""),
+            "gp":         _safe_int(cell.get("g")),
+            "pts":        _safe_float(cell.get("pts_per_g") or cell.get("pts")),
+            "reb":        _safe_float(cell.get("trb_per_g") or cell.get("trb")),
+            "ast":        _safe_float(cell.get("ast_per_g") or cell.get("ast")),
+            "stl":        _safe_float(cell.get("stl_per_g") or cell.get("stl")),
+            "blk":        _safe_float(cell.get("blk_per_g") or cell.get("blk")),
+            "fg_pct":     round(_safe_float(cell.get("fg_pct")) * 100, 1),
+            "fg3_pct":    round(_safe_float(cell.get("fg3_pct")) * 100, 1),
+            "stat_value": _safe_float(stat_raw),
+        })
+
+    return rows
+
+
 def get_game_log(bbref_id: str, season_end_year: int) -> list:
     """
     Fetch a player's regular-season game log from Basketball Reference.

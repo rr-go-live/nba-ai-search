@@ -18,6 +18,8 @@ QUERY INTELLIGENCE (system prompt covers):
 
 import json
 import logging
+import re
+import time
 from typing import Callable
 
 from google import genai
@@ -71,6 +73,8 @@ QUERY ROUTING — which tool to use
   → get_leaderboard
   → Output type: "leaderboard"
   Default to current season (2025-26) unless user specifies otherwise.
+  ALWAYS call get_leaderboard — never refuse or speculate about data availability.
+  The backend fetches from Basketball Reference if the NBA API returns nothing.
   Stat category mapping:
     most points / top scorers / scoring leaders / active points  → stat="pts"
     most rebounds / rebounding leaders                           → stat="reb"
@@ -150,6 +154,17 @@ GENERAL INSIGHT RULES:
     alongside Tim Duncan and Tony Parker" — never just cite numbers in a vacuum.
   • HISTORICAL COMPARISONS: mention era differences, rule changes, pace of play
     when comparing players across different decades.
+
+═══════════════════════════════════════════════════════
+GAME LOG ARRAYS — output empty arrays, backend injects data
+═══════════════════════════════════════════════════════
+
+CRITICAL: Always output [] (empty array) for ALL game log fields:
+  game_log, primary_log, comparison_log, player_log, opponent_log, series
+
+The backend automatically replaces these with the full untruncated data
+from the tool results. Never copy game log rows into the JSON — it wastes
+tokens and causes output truncation errors.
 
 ═══════════════════════════════════════════════════════
 FINAL JSON OUTPUT — output EXACTLY one ```json block
@@ -385,29 +400,46 @@ class NBAStatsAgent:
             logger.info(f"Iteration {iteration}/{MAX_AGENT_ITERS}")
             progress_cb("thinking", f"Step {iteration}: reasoning…")
 
-            try:
-                response = self.client.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_PROMPT,
-                        tools=GEMINI_TOOLS,
-                        max_output_tokens=AGENT_MAX_TOKENS,
-                    ),
-                )
-            except Exception as e:
-                logger.error(f"Gemini API: {e}")
-                progress_cb("error", str(e))
-                return {"success": False, "error": str(e)}
+            response = None
+            for attempt in range(3):
+                try:
+                    response = self.client.models.generate_content(
+                        model=GEMINI_MODEL,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            system_instruction=SYSTEM_PROMPT,
+                            tools=GEMINI_TOOLS,
+                            max_output_tokens=AGENT_MAX_TOKENS,
+                        ),
+                    )
+                    break
+                except Exception as e:
+                    err_str = str(e)
+                    # Extract retryDelay from 429 payload and wait
+                    if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                        m = re.search(r"retryDelay['\"]?\s*:\s*['\"]?(\d+)", err_str)
+                        wait = int(m.group(1)) + 2 if m else 60
+                        logger.warning(f"Gemini 429 — retrying in {wait}s (attempt {attempt+1})")
+                        progress_cb("thinking", f"Rate limited — retrying in {wait}s…")
+                        time.sleep(wait)
+                        if attempt == 2:
+                            progress_cb("error", "Quota exhausted. Try again later.")
+                            return {"success": False, "error": "Gemini API quota exhausted. The free tier allows 1500 requests/day. Please wait and retry."}
+                    else:
+                        logger.error(f"Gemini API: {e}")
+                        progress_cb("error", err_str)
+                        return {"success": False, "error": err_str}
 
-            if not response.candidates:
+            if response is None or not response.candidates:
                 logger.error("Gemini returned no candidates")
                 break
 
             candidate = response.candidates[0]
             parts = candidate.content.parts if candidate.content else []
 
-            text_parts = [p for p in parts if p.text]
+            # Filter out thought parts (Gemini 2.5 Flash is a thinking model;
+            # thought=True parts contain internal reasoning, not visible output).
+            text_parts = [p for p in parts if p.text and not getattr(p, "thought", False)]
             fn_parts   = [p for p in parts if p.function_call]
 
             if text_parts:

@@ -162,6 +162,11 @@ tbody td { padding: 8px 10px; white-space: nowrap; transition: font-size .15s ea
 .pm { color: var(--loss); }
 .pz { color: var(--muted); }
 .season-tag { font-size: .58rem; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 2px 5px; }
+.log-pagination { display:flex; align-items:center; justify-content:center; gap:16px; padding:12px 0 4px; }
+.log-pagination button { background:transparent; border:1px solid var(--border); border-radius:6px; cursor:pointer; padding:5px 14px; font-family:'DM Mono',monospace; font-size:.68rem; color:var(--muted); transition:all .15s; }
+.log-pagination button:hover:not(:disabled) { border-color:var(--tp); color:var(--tp); }
+.log-pagination button:disabled { opacity:.3; cursor:default; }
+.log-pagination span { font-size:.65rem; color:var(--muted); }
 .highlight-row { background: rgba(247,148,29,.05); }
 .error-box { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); border-radius: 10px; padding: 16px 20px; color: #fca5a5; margin-bottom: 20px; }
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(0,0,0,.3); border-top-color: #000; border-radius: 50%; animation: spin .7s linear infinite; }
@@ -296,6 +301,9 @@ function applyTeamColor(abbr) {
 var charts = {};
 var logA = [], logB = [];
 var sortState = { col: null, dir: 'desc' };
+var currentLog = [];
+var logPage = 0;
+var LOG_PAGE_SIZE = 25;
 
 function setQ(el) { document.getElementById('query-input').value = el.textContent.trim(); }
 
@@ -1091,6 +1099,8 @@ function buildGameLog(containerId, primaryLog, secondaryLog, aName, bName) {
   logA = primaryLog || [];
   logB = secondaryLog || [];
   sortState = { col: null, dir: 'desc' };
+  currentLog = logA;
+  logPage = 0;
 
   var hasToggle = logB && logB.length > 0;
   var aLbl = aName || 'Primary';
@@ -1110,9 +1120,11 @@ function buildGameLog(containerId, primaryLog, secondaryLog, aName, bName) {
 }
 
 window.switchLog = function(side) {
-  var data = side === 'a' ? logA : logB;
-  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(data);
-  document.getElementById('log-count').textContent = data.length + ' games';
+  currentLog = side === 'a' ? logA : logB;
+  logPage = 0;
+  sortState = { col: null, dir: 'desc' };
+  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(currentLog);
+  document.getElementById('log-count').textContent = currentLog.length + ' games';
   var ba = document.getElementById('btn-la');
   var bb = document.getElementById('btn-lb');
   if (ba) ba.className = side === 'a' ? 'on' : '';
@@ -1121,8 +1133,11 @@ window.switchLog = function(side) {
 
 function gameLogHtml(rows, sortCol, sortDir) {
   if (!rows || !rows.length) return '<p style="color:var(--muted);padding:16px 0">No games.</p>';
+  var totalPages = Math.ceil(rows.length / LOG_PAGE_SIZE);
+  var page = Math.max(0, Math.min(logPage, totalPages - 1));
+  var pageRows = rows.slice(page * LOG_PAGE_SIZE, (page + 1) * LOG_PAGE_SIZE);
   var tbody = '';
-  rows.forEach(function(g) {
+  pageRows.forEach(function(g) {
     var pm = parseInt(g.plus_minus || 0);
     var pmCls = pm > 0 ? 'pp' : pm < 0 ? 'pm' : 'pz';
     var pmStr = pm > 0 ? '+' + pm : String(pm);
@@ -1154,7 +1169,7 @@ function gameLogHtml(rows, sortCol, sortDir) {
     return '<th onclick="sortGameLog(\'' + col + '\')"' + style + '>' + label + arrow + '</th>';
   }
 
-  return '<table>'
+  var tableHtml = '<table>'
     + '<thead><tr>'
     + th('Season',  'season')
     + th('Date',    'date')
@@ -1172,6 +1187,19 @@ function gameLogHtml(rows, sortCol, sortDir) {
     + '</tr></thead>'
     + '<tbody>' + tbody + '</tbody>'
     + '</table>';
+
+  var paginationHtml = '';
+  if (totalPages > 1) {
+    var start = page * LOG_PAGE_SIZE + 1;
+    var end   = Math.min((page + 1) * LOG_PAGE_SIZE, rows.length);
+    paginationHtml = '<div class="log-pagination">'
+      + '<button ' + (page === 0 ? 'disabled' : 'onclick="goLogPage(' + (page - 1) + ')"') + '>← Prev</button>'
+      + '<span>' + start + '–' + end + ' of ' + rows.length + ' games · page ' + (page + 1) + ' / ' + totalPages + '</span>'
+      + '<button ' + (page >= totalPages - 1 ? 'disabled' : 'onclick="goLogPage(' + (page + 1) + ')"') + '>Next →</button>'
+      + '</div>';
+  }
+
+  return tableHtml + paginationHtml;
 }
 
 // ─── renderCompare ───────────────────────────────────────────────────────────
@@ -1632,7 +1660,7 @@ window.sortGameLog = function(col) {
   }
   var btn = document.getElementById('btn-la');
   var src = (!btn || btn.className === 'on') ? logA : logB;
-  var sorted = src.slice().sort(function(a, b) {
+  currentLog = src.slice().sort(function(a, b) {
     // For date column use date_sort (YYYY-MM-DD) not the display string
     // which is 'OCT 22, 2024' — alphabetical sort on that is wrong.
     var av = col === 'date' ? (a.date_sort || a.date || '') : a[col];
@@ -1642,7 +1670,13 @@ window.sortGameLog = function(col) {
       ? String(av || '').localeCompare(String(bv || ''))
       : String(bv || '').localeCompare(String(av || ''));
   });
-  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(sorted, col, sortState.dir);
+  logPage = 0;
+  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(currentLog, col, sortState.dir);
+};
+
+window.goLogPage = function(page) {
+  logPage = page;
+  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(currentLog, sortState.col, sortState.dir);
 };
 </script>
 </body>

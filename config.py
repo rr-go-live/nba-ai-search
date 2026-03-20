@@ -40,11 +40,11 @@ for _y in range(MIN_YEAR, MAX_YEAR + 1):
 # Get a key at: https://aistudio.google.com/apikey
 # Set env var:  GOOGLE_API_KEY=<your key>
 #
-# Note: gemini-2.0-flash is deprecated (EOL June 1 2026).
-# Swap the model string below if you need a specific version.
+# gemini-2.5-flash: 20 req/day free tier. Add billing to unlock higher limits.
+# Swap to gemini-2.0-flash for 1500 req/day free (deprecated EOL June 2026).
 GEMINI_MODEL     = "gemini-2.5-flash"
 MAX_AGENT_ITERS  = 12
-AGENT_MAX_TOKENS = 4096
+AGENT_MAX_TOKENS = 8192
 
 # ── Flask ─────────────────────────────────────────────────────────────────────
 FLASK_HOST = "0.0.0.0"

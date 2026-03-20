@@ -1000,6 +1000,63 @@ def _get_leaderboard_leaguedash(
         return []
 
 
+def _leaderboard_bbref(category: str, season: str, per_mode: str, top_n: int) -> dict:
+    """
+    BBRef fallback for get_leaderboard() when both the NBA API and
+    LeagueDashPlayerStats return no data for the current season.
+    """
+    import bbref_client
+    season_end_year = int(season.split("-")[0]) + 1   # "2025-26" → 2026
+
+    logger.info(f"Falling back to BBRef for leaderboard {category} {season}")
+    bbref_rows = bbref_client.get_leaderboard(category, season_end_year, per_mode, top_n)
+
+    if not bbref_rows:
+        return {
+            "error": f"No leaderboard data available for {season} (NBA API and Basketball Reference both returned empty).",
+            "leaders": [],
+            "season": season,
+            "season_requested": season,
+        }
+
+    leaders = []
+    for rank, r in enumerate(bbref_rows, 1):
+        name = r["name"]
+        pid  = 0
+        matches = static_players.find_players_by_full_name(name)
+        if matches:
+            pid = matches[0]["id"]
+        leaders.append({
+            "rank":         rank,
+            "player_id":    pid,
+            "name":         name,
+            "team":         r.get("team", ""),
+            "headshot_url": headshot_url(pid) if pid else "",
+            "gp":           r.get("gp", 0),
+            "pts":          round(r.get("pts", 0.0), 1),
+            "reb":          round(r.get("reb", 0.0), 1),
+            "ast":          round(r.get("ast", 0.0), 1),
+            "stl":          round(r.get("stl", 0.0), 1),
+            "blk":          round(r.get("blk", 0.0), 1),
+            "fg_pct":       r.get("fg_pct", 0.0),
+            "fg3_pct":      r.get("fg3_pct", 0.0),
+            "stat_value":   round(r.get("stat_value", 0.0), 1),
+        })
+
+    return {
+        "stat_category":       category,
+        "stat_label":          category.lower(),
+        "season":              season,
+        "season_requested":    season,
+        "season_fallback_used": False,
+        "season_type":         "Regular Season",
+        "per_mode":            per_mode,
+        "leaders":             leaders,
+        "count":               len(leaders),
+        "_source":             "bbref",
+    }
+
+
 def get_leaderboard(
     stat:        str = "pts",
     season:      str = DEFAULT_SEASON,
@@ -1080,6 +1137,8 @@ def get_leaderboard(
             used_season = requested_season
 
     if not raw_rows:
+        if requested_season >= "2025-26" and season_type == "Regular Season":
+            return _leaderboard_bbref(category, requested_season, per_mode, top_n)
         return {
             "error": f"No leaderboard data available for {requested_season} or fallback seasons.",
             "leaders": [],

@@ -180,6 +180,42 @@ PLAYER OBJECT (always include all fields):
   "headshot_url": "https://cdn.nba.com/headshots/nba/latest/1040x760/1628369.png"
 }
 
+═══════════════════════════════════════════════════════
+TEAM COLOR CONTEXT RULE  (applies to EVERY query type)
+═══════════════════════════════════════════════════════
+
+team_abbr in the player object drives the ENTIRE UI color scheme (header
+borders, chart fills, accent colors). Get it right every time.
+
+SPECIFIC query  →  use the team from the context, not the current team.
+BROAD query     →  use the player's current team.
+
+A query is SPECIFIC when it contains ANY of these signals:
+  • Explicit team mention   "while on the Cavaliers", "during his Heat years",
+                            "on the Warriors", "as a Spur"
+  • Specific season/year    "2018 season", "2016 playoffs", "2013-14"
+  • Teammate context        "without Kyrie"  → implies CLE (only team LeBron+Kyrie
+                            shared); "without Wade" → implies MIA
+  • Known championship run  "LeBron's Finals run", "Kawhi's title year", etc.
+
+A query is BROAD when there is NO season, NO team, and NO teammate anchor:
+  "LeBron stats"  /  "LeBron career"  /  "LeBron best season"  →  LAL (current)
+
+QUICK REFERENCE — common historical team mappings:
+  LeBron without Kyrie Irving      → CLE   (Kyrie only played with LeBron on CLE)
+  LeBron without Dwyane Wade       → MIA
+  LeBron 2016–18 Playoffs          → CLE
+  LeBron 2012–14 Playoffs          → MIA
+  LeBron 2020 Playoffs             → LAL
+  Kawhi 2014 / 2018 Playoffs       → SAS
+  Kawhi 2019 Playoffs              → TOR
+  KD without Kyrie                 → GSW or OKC (use season range to decide)
+  KD 2017–19 Playoffs              → GSW
+  Harden before 2021               → HOU
+  Harden 2021–22                   → BKN
+  Westbrook with KD                → OKC
+  Curry / Klay / Draymond always   → GSW (never changed teams together)
+
 CRITICAL — HISTORICAL TEAM COLORS:
 team and team_abbr MUST reflect the team the player was on during the queried
 season, NOT their current or most recent team. The frontend maps team_abbr

@@ -1,7 +1,11 @@
 """
 agent.py
 ========
-PURPOSE: Claude agentic loop for NBA Stats Explorer.
+PURPOSE: Gemini agentic loop for NBA Stats Explorer.
+
+LLM: Google Gemini 2.5 Flash (free tier — no billing required).
+SDK: google-genai   (pip install google-genai)
+Key: GOOGLE_API_KEY env var — get one free at https://aistudio.google.com/apikey
 
 QUERY INTELLIGENCE (system prompt covers):
   - H2H / head-to-head: both players active in the same game
@@ -16,9 +20,10 @@ import json
 import logging
 from typing import Callable
 
-import anthropic
+from google import genai
+from google.genai import types
 
-from config import CLAUDE_MODEL, MAX_AGENT_ITERS, AGENT_MAX_TOKENS
+from config import GEMINI_MODEL, MAX_AGENT_ITERS, AGENT_MAX_TOKENS
 from tools import TOOL_DEFINITIONS, execute_tool
 
 logger = logging.getLogger(__name__)
@@ -309,24 +314,71 @@ CRITICAL FOR PLAYOFF COMPARISONS:
 IMPORTANT: Every numeric field must be a number (0.0 not null). team must never be empty — use "TOT" for traded players."""
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Tool schema conversion: Anthropic JSON Schema → Gemini function declarations
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _convert_schema(schema: dict) -> dict:
+    """
+    Recursively convert a JSON Schema dict (Anthropic format) to Gemini's
+    function-declaration parameter schema format.
+
+    Key difference: Gemini expects uppercase type strings
+    ("STRING", "OBJECT", "INTEGER", "BOOLEAN", "ARRAY") instead of lowercase.
+    minItems / maxItems are dropped — they're not supported by Gemini schemas.
+    """
+    result = {}
+    if "type" in schema:
+        result["type"] = schema["type"].upper()
+    if "description" in schema:
+        result["description"] = schema["description"]
+    if "properties" in schema:
+        result["properties"] = {
+            k: _convert_schema(v) for k, v in schema["properties"].items()
+        }
+    if "required" in schema:
+        result["required"] = schema["required"]
+    if "items" in schema:
+        result["items"] = _convert_schema(schema["items"])
+    if "enum" in schema:
+        result["enum"] = schema["enum"]
+    return result
+
+
+GEMINI_TOOLS = [
+    types.Tool(function_declarations=[
+        types.FunctionDeclaration(
+            name=t["name"],
+            description=t["description"],
+            parameters=_convert_schema(t["input_schema"]),
+        )
+        for t in TOOL_DEFINITIONS
+    ])
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Agent
+# ─────────────────────────────────────────────────────────────────────────────
+
 class NBAStatsAgent:
     def __init__(self):
-        self.client = anthropic.Anthropic()
-        logger.info(f"NBAStatsAgent initialized ({CLAUDE_MODEL})")
+        # Reads GOOGLE_API_KEY from environment automatically.
+        self.client = genai.Client()
+        logger.info(f"NBAStatsAgent initialized ({GEMINI_MODEL})")
 
     def run(self, query: str, progress_cb: Callable[[str, str], None]) -> dict:
-        messages       = [{"role": "user", "content": query}]
-        last_text      = ""
-        # raw_tool_cache stores the complete untruncated result of every tool
-        # call, keyed by tool_use_id.
-        #
-        # WHY THIS EXISTS:
-        # Claude output is capped at AGENT_MAX_TOKENS. A full multi-season game
-        # log (40-80 rows x ~150 tokens each) can exceed that budget — Claude
-        # silently truncates the game_log array in its final JSON to fit.
-        # After we parse Claude's JSON we call _merge_raw_logs() which replaces
-        # the truncated arrays with the full rows from this cache, so the
-        # frontend always receives every game regardless of output length.
+        # Gemini uses a flat contents list: alternating user/model turns.
+        # Tool results go in a "user" turn as function_response parts.
+        contents: list = [
+            types.Content(role="user", parts=[types.Part(text=query)])
+        ]
+        last_text = ""
+
+        # raw_tool_cache: same purpose as in the Anthropic version — stores the
+        # complete untruncated tool results so _merge_raw_logs() can replace
+        # any game log arrays that Gemini truncated in its final JSON output.
+        # Keyed by "{tool_name}_{iteration}_{index}" (Gemini has no tool_use_id).
         raw_tool_cache: dict = {}
 
         for iteration in range(1, MAX_AGENT_ITERS + 1):
@@ -334,102 +386,106 @@ class NBAStatsAgent:
             progress_cb("thinking", f"Step {iteration}: reasoning…")
 
             try:
-                response = self.client.messages.create(
-                    model=CLAUDE_MODEL, max_tokens=AGENT_MAX_TOKENS,
-                    system=SYSTEM_PROMPT, tools=TOOL_DEFINITIONS, messages=messages,
+                response = self.client.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        tools=GEMINI_TOOLS,
+                        max_output_tokens=AGENT_MAX_TOKENS,
+                    ),
                 )
             except Exception as e:
-                logger.error(f"Claude API: {e}")
+                logger.error(f"Gemini API: {e}")
                 progress_cb("error", str(e))
                 return {"success": False, "error": str(e)}
 
-            text_blocks     = [b for b in response.content if b.type == "text"]
-            tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
+            if not response.candidates:
+                logger.error("Gemini returned no candidates")
+                break
 
-            if text_blocks:
-                last_text = " ".join(b.text for b in text_blocks)
+            candidate = response.candidates[0]
+            parts = candidate.content.parts if candidate.content else []
+
+            text_parts = [p for p in parts if p.text]
+            fn_parts   = [p for p in parts if p.function_call]
+
+            if text_parts:
+                last_text = " ".join(p.text for p in text_parts)
                 excerpt   = last_text[:280].replace("\n", " ")
                 if "```json" not in last_text[:50]:
                     progress_cb("message", excerpt)
 
-            if response.stop_reason == "end_turn" and not tool_use_blocks:
+            # No function calls → model is done
+            if not fn_parts:
                 break
 
-            if tool_use_blocks:
-                messages.append({"role": "assistant", "content": response.content})
-                tool_results = []
-                for block in tool_use_blocks:
-                    progress_cb("tool_start", _describe_tool(block.name, block.input))
-                    try:
-                        result = execute_tool(block.name, block.input)
-                        progress_cb("tool_result", _summarise(block.name, result))
-                    except Exception as e:
-                        logger.error(f"Tool {block.name}: {e}")
-                        result = {"error": str(e)}
-                        progress_cb("tool_result", f"⚠️ {block.name}: {e}")
+            # Append model's full response (text + function calls) to history
+            contents.append(candidate.content)
 
-                    # Cache by tool_use_id so two calls to the same tool
-                    # (e.g. both H2H get_conditional_stats calls) are kept
-                    # separately and can each be merged back correctly.
-                    raw_tool_cache[block.id] = {
-                        "name":   block.name,
-                        "input":  block.input,
-                        "result": result,
-                    }
+            # Execute every function call in this turn
+            fn_response_parts = []
+            for idx, part in enumerate(fn_parts):
+                fn      = part.function_call
+                fn_args = dict(fn.args)
 
-                    tool_results.append({
-                        "type":        "tool_result",
-                        "tool_use_id": block.id,
-                        "content":     json.dumps(result),
-                    })
-                messages.append({"role": "user", "content": tool_results})
-            elif response.stop_reason != "end_turn":
-                break
+                progress_cb("tool_start", _describe_tool(fn.name, fn_args))
+                try:
+                    result = execute_tool(fn.name, fn_args)
+                    progress_cb("tool_result", _summarise(fn.name, result))
+                except Exception as e:
+                    logger.error(f"Tool {fn.name}: {e}")
+                    result = {"error": str(e)}
+                    progress_cb("tool_result", f"⚠️ {fn.name}: {e}")
+
+                cache_key = f"{fn.name}_{iteration}_{idx}"
+                raw_tool_cache[cache_key] = {
+                    "name":   fn.name,
+                    "input":  fn_args,
+                    "result": result,
+                }
+
+                fn_response_parts.append(
+                    types.Part(
+                        function_response=types.FunctionResponse(
+                            name=fn.name,
+                            response={"result": result},
+                        )
+                    )
+                )
+
+            # Feed all tool results back as a single user turn
+            contents.append(
+                types.Content(role="user", parts=fn_response_parts)
+            )
 
         result_data = _extract_json(last_text)
         narrative   = _extract_narrative(last_text)
 
-        # Overwrite any truncated game logs with the full rows from the cache.
         if result_data:
             result_data = _merge_raw_logs(result_data, raw_tool_cache)
 
         return {"success": bool(result_data), "result": result_data, "narrative": narrative}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers (identical to Anthropic version — model-agnostic)
+# ─────────────────────────────────────────────────────────────────────────────
+
 def _merge_raw_logs(result: dict, cache: dict) -> dict:
     """
-    _merge_raw_logs(result, cache) -> dict
-    ======================================
-    Replace any game log arrays in Claude's output JSON with the complete
+    Replace any game log arrays in the model's output JSON with the complete
     untruncated rows stored in raw_tool_cache.
 
-    WHY:
-    Claude writes its final answer as JSON inside its text output, which is
-    capped at AGENT_MAX_TOKENS tokens. A multi-season game log (e.g. LeBron
-    vs Celtics since 2015 = ~44 games) can take 6,000+ tokens to serialise.
-    When that pushes Claude over budget it silently truncates the array,
-    leaving only the most recent N games in its output.
-
-    This function ignores whatever Claude wrote for game log fields and
-    substitutes the authoritative rows that came directly from the NBA API
-    via the tool call result — those were never token-limited.
-
-    MAPPING:
-      vs_team     → game_log       from get_stats_vs_team result
-      conditional → primary_log    from get_conditional_stats result (1st call)
-                    comparison_log from get_conditional_stats result
-      h2h         → player_log     from 1st  get_conditional_stats call
-                    opponent_log   from 2nd get_conditional_stats call
+    Gemini (like Claude) can silently truncate large arrays when max_output_tokens
+    is reached. This function substitutes the authoritative data that came
+    directly from the NBA API tool calls — those were never token-limited.
     """
     result_type = result.get("type", "")
 
-    # leaderboard has no arrays to merge — pass through unchanged
     if result_type == "leaderboard":
         return result
 
-    # compare: inject series + season_type from raw tool cache into each player object.
-    # Claude writes "series": [] in its JSON (as instructed) — we fill it here from
-    # the actual get_multi_player_stats result which contains the full series breakdown.
     if result_type == "compare":
         multi_results = [
             entry["result"]
@@ -437,29 +493,25 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
             if entry.get("name") == "get_multi_player_stats"
         ]
         if multi_results:
-            raw_players = multi_results[-1].get("players", [])
+            raw_players    = multi_results[-1].get("players", [])
             result_players = result.get("players", [])
             for i, rp in enumerate(result_players):
                 if i < len(raw_players):
                     raw = raw_players[i]
-                    # Inject series breakdown (the main thing Claude can't write)
                     if raw.get("series"):
                         rp["series"] = raw["series"]
-                    # Ensure season_type is present — frontend uses it to show series UI
                     if not rp.get("season_type") and raw.get("season_type"):
                         rp["season_type"] = raw["season_type"]
                     if not rp.get("season_from") and raw.get("season_from"):
                         rp["season_from"] = raw["season_from"]
                     if not rp.get("season_to") and raw.get("season_to"):
                         rp["season_to"] = raw["season_to"]
-                    # Backfill team_abbr from raw if Claude left it empty
                     if not rp.get("team_abbr") and raw.get("team_abbr"):
                         rp["team_abbr"] = raw["team_abbr"]
         return result
 
-    # Collect all tool results by name (preserving order for H2H dual calls)
-    vs_team_results   = []
-    cond_results      = []
+    vs_team_results = []
+    cond_results    = []
 
     for entry in cache.values():
         name = entry.get("name", "")
@@ -476,22 +528,18 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
 
     elif result_type == "conditional" and cond_results:
         raw = cond_results[-1]
-        if "primary_log"    in raw: result["primary_log"]    = raw["primary_log"]
-        if "comparison_log" in raw: result["comparison_log"] = raw["comparison_log"]
-        # Also update game counts so the UI badge is accurate
+        if "primary_log"      in raw: result["primary_log"]      = raw["primary_log"]
+        if "comparison_log"   in raw: result["comparison_log"]   = raw["comparison_log"]
         if "primary_games"    in raw: result["primary_games"]    = raw["primary_games"]
         if "comparison_games" in raw: result["comparison_games"] = raw["comparison_games"]
 
     elif result_type == "h2h" and len(cond_results) >= 2:
-        # H2H makes two get_conditional_stats calls: Call 1 = primary player,
-        # Call 2 = opponent player. The matched rows ARE the H2H games.
-        result["player_log"]   = cond_results[0].get("primary_log",   result.get("player_log",   []))
-        result["opponent_log"] = cond_results[1].get("primary_log",   result.get("opponent_log", []))
+        result["player_log"]     = cond_results[0].get("primary_log",   result.get("player_log",   []))
+        result["opponent_log"]   = cond_results[1].get("primary_log",   result.get("opponent_log", []))
         result["player_games"]   = cond_results[0].get("primary_games",   result.get("player_games",   0))
         result["opponent_games"] = cond_results[1].get("primary_games",   result.get("opponent_games", 0))
 
     elif result_type == "h2h" and len(cond_results) == 1:
-        # Fallback: only one cond call found
         result["player_log"]   = cond_results[0].get("primary_log",    result.get("player_log",   []))
         result["opponent_log"] = cond_results[0].get("comparison_log", result.get("opponent_log", []))
 

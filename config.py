@@ -35,8 +35,14 @@ for _y in range(MIN_YEAR, MAX_YEAR + 1):
     YEAR_TO_SEASON[_s]            = _s   # already canonical
     YEAR_TO_SEASON[str(_y + 1)]  = _s   # end year    e.g. "2018"
 
-# ── Claude agent ──────────────────────────────────────────────────────────────
-CLAUDE_MODEL     = "claude-sonnet-4-20250514"
+# ── Gemini agent ──────────────────────────────────────────────────────────────
+# Gemini 2.5 Flash — free tier via Google AI Studio (no billing required).
+# Get a key at: https://aistudio.google.com/apikey
+# Set env var:  GOOGLE_API_KEY=<your key>
+#
+# Note: gemini-2.0-flash is deprecated (EOL June 1 2026).
+# Swap the model string below if you need a specific version.
+GEMINI_MODEL     = "gemini-2.5-flash"
 MAX_AGENT_ITERS  = 12
 AGENT_MAX_TOKENS = 4096
 

@@ -303,15 +303,39 @@ function applyTeamColor(abbr) {
 }
 
 // ─── NBA Team Colors ─────────────────────────────────────────────────────────
+// Colors chosen for legibility on --bg:#080c12.
+// Dark primaries are swapped for the team's visible secondary/alt color.
 var NBA_TEAM_COLORS = {
-  'ATL': '#E03A3E', 'BOS': '#007A33', 'BKN': '#AAAAAA', 'CHA': '#1D1160',
-  'CHI': '#CE1141', 'CLE': '#860038', 'DAL': '#00538C', 'DEN': '#FEC524',
-  'DET': '#C8102E', 'GSW': '#FFC72C', 'HOU': '#CE1141', 'IND': '#FDBB30',
-  'LAC': '#C8102E', 'LAL': '#FDB927', 'MEM': '#12173F', 'MIA': '#98002E',
-  'MIL': '#00471B', 'MIN': '#236192', 'NOP': '#0C2340', 'NYK': '#F58426',
-  'OKC': '#EF3B24', 'ORL': '#0077C0', 'PHI': '#006BB6', 'PHX': '#E56020',
-  'POR': '#E03A3E', 'SAC': '#5A2D81', 'SAS': '#C4CED4', 'TOR': '#CE1141',
-  'UTA': '#F9A01B', 'WAS': '#E31837'
+  'ATL': '#E03A3E',  // Hawks red            — fine
+  'BOS': '#00C05A',  // Celtics green         — brightened (was #007A33)
+  'BKN': '#AAAAAA',  // Nets grey             — fine
+  'CHA': '#00BCD1',  // Hornets teal          — replaces near-black navy #1D1160
+  'CHI': '#CE1141',  // Bulls red             — fine
+  'CLE': '#FDBB30',  // Cavs gold             — replaces dark wine #860038
+  'DAL': '#0096D6',  // Mavs blue             — brightened (was #00538C)
+  'DEN': '#FEC524',  // Nuggets gold          — fine
+  'DET': '#C8102E',  // Pistons red           — fine
+  'GSW': '#FFC72C',  // Warriors gold         — fine
+  'HOU': '#CE1141',  // Rockets red           — fine
+  'IND': '#FDBB30',  // Pacers gold           — fine
+  'LAC': '#C8102E',  // Clippers red          — fine
+  'LAL': '#FDB927',  // Lakers gold           — fine
+  'MEM': '#5D76A9',  // Grizzlies steel blue  — replaces near-black #12173F
+  'MIA': '#DC143C',  // Heat bright red       — replaces dark maroon #98002E
+  'MIL': '#00DE8C',  // Bucks bright green    — replaces dark green #00471B
+  'MIN': '#4A9FD4',  // T-Wolves sky blue     — brightened (was #236192)
+  'NOP': '#C8A956',  // Pelicans gold         — replaces near-black navy #0C2340
+  'NYK': '#F58426',  // Knicks orange         — fine
+  'OKC': '#EF3B24',  // Thunder orange-red    — fine
+  'ORL': '#0099E6',  // Magic blue            — brightened (was #0077C0)
+  'PHI': '#0091EA',  // Sixers blue           — brightened (was #006BB6)
+  'PHX': '#E56020',  // Suns orange           — fine
+  'POR': '#E03A3E',  // Blazers red           — fine
+  'SAC': '#9B59D0',  // Kings purple          — brightened (was #5A2D81)
+  'SAS': '#C4CED4',  // Spurs silver          — fine
+  'TOR': '#CE1141',  // Raptors red           — fine
+  'UTA': '#F9A01B',  // Jazz yellow           — fine
+  'WAS': '#E31837'   // Wizards red           — fine
 };
 function teamColor(abbr) {
   return NBA_TEAM_COLORS[abbr] || getComputedStyle(document.documentElement).getPropertyValue('--tp').trim() || '#f7941d';

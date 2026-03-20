@@ -20,8 +20,11 @@ SSE EVENT TYPES (consumed by frontend JS):
   error       — error message
 """
 
+import atexit
+import csv
 import json
 import logging
+import os
 import threading
 import uuid
 from datetime import datetime
@@ -34,6 +37,75 @@ from flask_cors import CORS
 
 from config import FLASK_HOST, FLASK_PORT
 from agent import NBAStatsAgent
+
+# ── Gemini 2.5 Flash pricing (USD per 1M tokens, as of 2025) ─────────────────
+PRICE_INPUT_PER_M  = 0.075   # $0.075 / 1M input tokens
+PRICE_OUTPUT_PER_M = 0.30    # $0.30  / 1M output tokens
+
+# ── Session usage store ───────────────────────────────────────────────────────
+SESSION_START   = datetime.utcnow().isoformat()
+USAGE_LOG: list = []          # list of per-query dicts
+USAGE_LOCK      = threading.Lock()
+REPORT_PATH     = "usage_report.csv"
+
+CSV_FIELDS = [
+    "timestamp", "query", "api_calls",
+    "input_tokens", "output_tokens",
+    "input_cost_usd", "output_cost_usd", "query_cost_usd",
+    "session_total_cost_usd",
+]
+
+
+def _compute_cost(input_tok: int, output_tok: int) -> tuple[float, float]:
+    """Return (input_cost, output_cost) in USD."""
+    return (
+        input_tok  / 1_000_000 * PRICE_INPUT_PER_M,
+        output_tok / 1_000_000 * PRICE_OUTPUT_PER_M,
+    )
+
+
+def _write_csv():
+    """Write the full session usage log to CSV (called after every query + on exit)."""
+    with USAGE_LOCK:
+        rows = list(USAGE_LOG)
+
+    running_total = 0.0
+    try:
+        with open(REPORT_PATH, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+            writer.writeheader()
+            for row in rows:
+                running_total += row["query_cost_usd"]
+                writer.writerow({**row, "session_total_cost_usd": round(running_total, 8)})
+        logger.info(f"Usage report written → {REPORT_PATH} ({len(rows)} queries, ${running_total:.6f} total)")
+    except Exception as e:
+        logger.warning(f"Could not write usage report: {e}")
+
+
+def _record_usage(query: str, usage: dict):
+    """Append one query's usage to the in-memory log and flush to CSV."""
+    input_tok  = usage.get("input_tokens",  0)
+    output_tok = usage.get("output_tokens", 0)
+    api_calls  = usage.get("api_calls",     0)
+    in_cost, out_cost = _compute_cost(input_tok, output_tok)
+    row = {
+        "timestamp":        datetime.utcnow().isoformat(),
+        "query":            query,
+        "api_calls":        api_calls,
+        "input_tokens":     input_tok,
+        "output_tokens":    output_tok,
+        "input_cost_usd":   round(in_cost,  8),
+        "output_cost_usd":  round(out_cost, 8),
+        "query_cost_usd":   round(in_cost + out_cost, 8),
+        # session_total_cost_usd filled in _write_csv
+        "session_total_cost_usd": 0.0,
+    }
+    with USAGE_LOCK:
+        USAGE_LOG.append(row)
+    _write_csv()
+
+
+atexit.register(_write_csv)  # final flush when Python process exits
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -81,6 +153,9 @@ def _run_agent(job_id: str, query: str):
     try:
         agent  = NBAStatsAgent()
         output = agent.run(query, progress_cb=cb)
+
+        # Record token usage / cost for this query
+        _record_usage(query, output.get("usage") or {})
 
         job = JOBS[job_id]
         with job["lock"]:
@@ -194,6 +269,46 @@ def status(job_id: str):
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok", "jobs": len(JOBS)})
+
+
+@app.route("/api/usage_report")
+def usage_report():
+    """Return the current session's usage/cost CSV as a file download."""
+    _write_csv()          # ensure latest data is flushed
+    if not os.path.exists(REPORT_PATH):
+        return jsonify({"error": "No usage data yet."}), 404
+    with open(REPORT_PATH, "r", encoding="utf-8") as f:
+        csv_content = f.read()
+    return Response(
+        csv_content,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{REPORT_PATH}"'},
+    )
+
+
+@app.route("/api/usage_summary")
+def usage_summary():
+    """Return a JSON summary of session usage and cost."""
+    with USAGE_LOCK:
+        rows = list(USAGE_LOG)
+    total_input  = sum(r["input_tokens"]  for r in rows)
+    total_output = sum(r["output_tokens"] for r in rows)
+    total_calls  = sum(r["api_calls"]     for r in rows)
+    total_cost   = sum(r["query_cost_usd"] for r in rows)
+    return jsonify({
+        "session_start":       SESSION_START,
+        "queries":             len(rows),
+        "total_api_calls":     total_calls,
+        "total_input_tokens":  total_input,
+        "total_output_tokens": total_output,
+        "total_cost_usd":      round(total_cost, 6),
+        "model":               "gemini-2.5-flash",
+        "pricing": {
+            "input_per_1m_tokens":  PRICE_INPUT_PER_M,
+            "output_per_1m_tokens": PRICE_OUTPUT_PER_M,
+        },
+        "log": rows,
+    })
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

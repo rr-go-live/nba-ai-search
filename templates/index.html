@@ -186,7 +186,12 @@ tbody td { padding: 8px 10px; white-space: nowrap; transition: font-size .15s ea
 
 <header>
   <div class="logo">NBA<span>Claude</span><span class="logo-dot"></span></div>
-  <div class="header-tag">Powered by Claude AI</div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="header-tag" style="display:flex;align-items:center;gap:6px;border-color:rgba(247,148,29,.35);color:var(--accent)">
+      <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse-dot 2s ease-in-out infinite;flex-shrink:0"></span>
+      AI Powered
+    </div>
+  </div>
 </header>
 
 <section class="search-section">
@@ -295,6 +300,21 @@ function resolveCompareColors(players) {
 
 function applyTeamColor(abbr) {
   document.documentElement.style.setProperty('--tp', teamColor(abbr));
+}
+
+// ─── NBA Team Colors ─────────────────────────────────────────────────────────
+var NBA_TEAM_COLORS = {
+  'ATL': '#E03A3E', 'BOS': '#007A33', 'BKN': '#AAAAAA', 'CHA': '#1D1160',
+  'CHI': '#CE1141', 'CLE': '#860038', 'DAL': '#00538C', 'DEN': '#FEC524',
+  'DET': '#C8102E', 'GSW': '#FFC72C', 'HOU': '#CE1141', 'IND': '#FDBB30',
+  'LAC': '#C8102E', 'LAL': '#FDB927', 'MEM': '#12173F', 'MIA': '#98002E',
+  'MIL': '#00471B', 'MIN': '#236192', 'NOP': '#0C2340', 'NYK': '#F58426',
+  'OKC': '#EF3B24', 'ORL': '#0077C0', 'PHI': '#006BB6', 'PHX': '#E56020',
+  'POR': '#E03A3E', 'SAC': '#5A2D81', 'SAS': '#C4CED4', 'TOR': '#CE1141',
+  'UTA': '#F9A01B', 'WAS': '#E31837'
+};
+function teamColor(abbr) {
+  return NBA_TEAM_COLORS[abbr] || getComputedStyle(document.documentElement).getPropertyValue('--tp').trim() || '#f7941d';
 }
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
@@ -1547,11 +1567,12 @@ function renderLeaderboard(d, c) {
     html += '<div id="lb-top3" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:18px">';
     top3.forEach(function(row, i) {
       var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
-      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;gap:10px;align-items:center">'
-        + '<img src="' + (row.headshot_url || hsUrl(row.player_id)) + '" onerror="this.style.display=\'none\'" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid var(--tp)">'
+      var tColor = teamColor(row.team);
+      html += '<div style="background:var(--surface);border:1px solid var(--border);border-top:3px solid ' + tColor + ';border-radius:12px;padding:12px;display:flex;gap:10px;align-items:center">'
+        + '<img src="' + (row.headshot_url || hsUrl(row.player_id)) + '" onerror="this.style.display=\'none\'" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid ' + tColor + '">'
         + '<div style="min-width:0"><div style="font-size:.65rem;color:var(--muted)">' + medal + ' #' + row.rank + '</div>'
         + '<div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (row.name || '') + '</div>'
-        + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;color:var(--tp);line-height:1">' + fmt(row.stat_value) + '</div></div></div>';
+        + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;color:' + tColor + ';line-height:1">' + fmt(row.stat_value) + '</div></div></div>';
     });
     html += '</div>';
   }
@@ -1589,14 +1610,15 @@ function renderLeaderboard(d, c) {
     tbody.innerHTML = filtered.map(function(row, idx) {
       var rankColor = row.rank === 1 ? '#FFD700' : row.rank === 2 ? '#C0C0C0' : row.rank === 3 ? '#CD7F32' : 'var(--muted)';
       var hs = row.headshot_url || hsUrl(row.player_id);
-      return '<tr style="border-bottom:1px solid rgba(255,255,255,.03)">' 
+      var rowTeamColor = teamColor(row.team);
+      return '<tr style="border-bottom:1px solid rgba(255,255,255,.03)">'
       + '<td style="padding:8px 10px;font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;font-weight:900;color:' + rankColor + '">' + row.rank + '</td>'
       + '<td style="padding:8px 10px;text-align:left"><div style="display:flex;align-items:center;gap:10px">'
-      + '<img src="' + hs + '" onerror="this.style.display=\'none\'" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0">'
+      + '<img src="' + hs + '" onerror="this.style.display=\'none\'" style="width:34px;height:34px;border-radius:50%;object-fit:cover;border:2px solid ' + rowTeamColor + ';flex-shrink:0">'
       + '<span style="font-weight:500">' + (row.name || '') + '</span></div></td>'
-      + '<td style="text-align:right;padding:8px 10px;color:var(--muted);font-size:.75rem">' + (row.team || '') + '</td>'
+      + '<td style="text-align:right;padding:8px 10px;font-size:.75rem"><span style="color:' + rowTeamColor + ';font-weight:700">' + (row.team || '') + '</span></td>'
       + '<td style="text-align:right;padding:8px 10px">' + (row.gp || 0) + '</td>'
-      + '<td style="text-align:right;padding:8px 10px;font-family:\'Barlow Condensed\',sans-serif;font-size:1.4rem;font-weight:900;color:' + fillColor + '">' + fmt(row.stat_value) + '</td>'
+      + '<td style="text-align:right;padding:8px 10px;font-family:\'Barlow Condensed\',sans-serif;font-size:1.4rem;font-weight:900;color:' + rowTeamColor + '">' + fmt(row.stat_value) + '</td>'
       + '<td style="text-align:right;padding:8px 10px">' + fmt(row.pts) + '</td>'
       + '<td style="text-align:right;padding:8px 10px">' + fmt(row.reb) + '</td>'
       + '<td style="text-align:right;padding:8px 10px">' + fmt(row.ast) + '</td>'
@@ -1615,13 +1637,11 @@ function renderLeaderboard(d, c) {
     if (!ctx || !filtered.length) return;
     var vals = filtered.map(function(r) { return r.stat_value; });
     var lbls = filtered.map(function(r) { return (r.name || '').split(' ').pop(); });
-    var bgCols = filtered.map(function(_, i) {
-      var alpha = Math.max(0.4, 1 - i * 0.06);
-      return fillColor + Math.round(alpha * 255).toString(16).padStart(2,'0');
-    });
+    var bgCols = filtered.map(function(r) { return teamColor(r.team) + 'CC'; });
+    var borderCols = filtered.map(function(r) { return teamColor(r.team); });
     charts['chart-lb'] = new Chart(ctx.getContext('2d'), {
       type: 'bar',
-      data: { labels: lbls, datasets: [{ label: statLbl, data: vals, backgroundColor: bgCols, borderRadius: 4 }] },
+      data: { labels: lbls, datasets: [{ label: statLbl, data: vals, backgroundColor: bgCols, borderColor: borderCols, borderWidth: 1, borderRadius: 4 }] },
       options: Object.assign(baseOpts(), { plugins: { legend: { display: false }, tooltip: tooltipOpts() } })
     });
   }

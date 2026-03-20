@@ -396,6 +396,11 @@ class NBAStatsAgent:
         # Keyed by "{tool_name}_{iteration}_{index}" (Gemini has no tool_use_id).
         raw_tool_cache: dict = {}
 
+        # ── Usage / cost accumulators ────────────────────────────────────────
+        total_input_tokens  = 0
+        total_output_tokens = 0
+        api_call_count      = 0
+
         for iteration in range(1, MAX_AGENT_ITERS + 1):
             logger.info(f"Iteration {iteration}/{MAX_AGENT_ITERS}")
             progress_cb("thinking", f"Step {iteration}: reasoning…")
@@ -412,6 +417,10 @@ class NBAStatsAgent:
                             max_output_tokens=AGENT_MAX_TOKENS,
                         ),
                     )
+                    api_call_count += 1
+                    if response.usage_metadata:
+                        total_input_tokens  += getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+                        total_output_tokens += getattr(response.usage_metadata, "candidates_token_count", 0) or 0
                     break
                 except Exception as e:
                     err_str = str(e)
@@ -497,7 +506,16 @@ class NBAStatsAgent:
         if result_data:
             result_data = _merge_raw_logs(result_data, raw_tool_cache)
 
-        return {"success": bool(result_data), "result": result_data, "narrative": narrative}
+        return {
+            "success":      bool(result_data),
+            "result":       result_data,
+            "narrative":    narrative,
+            "usage": {
+                "input_tokens":  total_input_tokens,
+                "output_tokens": total_output_tokens,
+                "api_calls":     api_call_count,
+            },
+        }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -180,6 +180,16 @@ PLAYER OBJECT (always include all fields):
   "headshot_url": "https://cdn.nba.com/headshots/nba/latest/1040x760/1628369.png"
 }
 
+CRITICAL — HISTORICAL TEAM COLORS:
+team and team_abbr MUST reflect the team the player was on during the queried
+season, NOT their current or most recent team. The frontend maps team_abbr
+directly to a color, so a wrong abbreviation = wrong color.
+  LeBron 2018 Playoffs  → "Cleveland Cavaliers" / "CLE"   (NOT LAL)
+  LeBron 2020 Playoffs  → "Los Angeles Lakers"  / "LAL"
+  Kawhi 2019 Playoffs   → "Toronto Raptors"     / "TOR"   (NOT LAC / SAS)
+  KD 2018 Playoffs      → "Golden State Warriors"/ "GSW"  (NOT BKN)
+  Harden 2021 Playoffs  → "Brooklyn Nets"       / "BKN"   (NOT HOU / PHI)
+
 AVERAGES OBJECT (all fields, use 0.0 for zero values — NEVER null/undefined):
 {
   "gp": 0, "pts": 0.0, "reb": 0.0, "ast": 0.0, "stl": 0.0, "blk": 0.0,
@@ -293,6 +303,8 @@ CRITICAL FOR PLAYOFF COMPARISONS:
 - Always include "season_from" and "season_to" on every player object
 - Leave "series": [] — the backend will inject series data automatically
 - The frontend uses season_type to decide whether to show the series breakdown UI
+- team_abbr MUST match the team during THAT playoff run — see HISTORICAL TEAM COLORS above
+  (LeBron 2018 = CLE, Kawhi 2019 = TOR, KD 2019 = GSW, etc.)
 
 ─── TYPE: leaderboard ────────────────────────────────────────
 ```json

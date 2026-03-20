@@ -1264,12 +1264,24 @@ function renderCompare(d, c) {
   var colors = resolveCompareColors(players);
 
   // ── Header ──────────────────────────────────────────────────────────────
+  // Colorize title: split on "vs" and paint each half with its player's team color
+  var rawTitle   = d.title || 'Comparison';
+  var vsParts    = rawTitle.split(/\s+vs\.?\s+/i);
+  var coloredTitle;
+  if (vsParts.length >= 2) {
+    coloredTitle = '<span style="color:' + colors[0] + '">' + vsParts[0] + '</span>'
+      + ' <span style="color:var(--muted);font-size:1.6rem;font-weight:400">vs</span> '
+      + '<span style="color:' + colors[1] + '">' + vsParts[1] + '</span>';
+  } else {
+    coloredTitle = rawTitle;
+  }
+
   var html = '<div style="padding:28px 0 20px;border-bottom:1px solid var(--border);margin-bottom:28px">'
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.7rem;font-weight:700;'
     +   'letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">'
     +   (isPlayoffs ? 'Playoff Comparison' : 'Player Comparison') + '</div>'
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:2.4rem;font-weight:900;line-height:1.1">'
-    +   (d.title || 'Comparison') + '</div>'
+    +   coloredTitle + '</div>'
     + '</div>'
     + insightHtml(d.insight);
 
@@ -1296,22 +1308,32 @@ function renderCompare(d, c) {
       +       seriesCount + ' series</div>' : '')
       +   '</div>'
       + '</div>'
-      // Big PPG
-      + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:3.6rem;font-weight:900;'
-      +   'line-height:1;color:' + col + '">' + fmt(avg.pts) + '</div>'
-      + '<div style="font-size:.58rem;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;'
-      +   'margin-bottom:14px">Points Per Game</div>'
-      // Stat row
-      + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">'
-      + ['reb','ast','stl','blk'].map(function(k) {
-          return '<div style="background:var(--surface2);border-radius:6px;padding:8px 6px;text-align:center">'
-            + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;font-weight:700">'
-            + fmt(avg[k]) + '</div>'
-            + '<div style="font-size:.52rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">'
-            + (statLabels[k]||k) + '</div>'
+      // Big PTS — show totals for playoff comparisons, per-game otherwise
+      + (function() {
+          var gp = avg.gp || 0;
+          var bigNum   = isPlayoffs ? String(Math.round((avg.pts||0) * gp)) : fmt(avg.pts);
+          var bigLabel = isPlayoffs ? 'Points' : 'Points Per Game';
+          var chipMap  = isPlayoffs
+            ? {reb:'REB', ast:'AST', stl:'STL', blk:'BLK'}
+            : {reb:'RPG', ast:'APG', stl:'SPG', blk:'BPG'};
+          return '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:3.6rem;font-weight:900;'
+            +   'line-height:1;color:' + col + '">' + bigNum + '</div>'
+            + '<div style="font-size:.58rem;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;'
+            +   'margin-bottom:14px">' + bigLabel + '</div>'
+            // Stat chips
+            + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">'
+            + ['reb','ast','stl','blk'].map(function(k) {
+                var chipVal = isPlayoffs ? String(Math.round((avg[k]||0) * gp)) : fmt(avg[k]);
+                return '<div style="background:var(--surface2);border-radius:6px;padding:8px 6px;text-align:center">'
+                  + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;font-weight:700">'
+                  + chipVal + '</div>'
+                  + '<div style="font-size:.52rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">'
+                  + (chipMap[k]||k) + '</div>'
+                  + '</div>';
+              }).join('')
             + '</div>';
-        }).join('')
-      + '</div>'
+        })()
+      + ''
       // FG% / 3P% / FT% row
       + '<div style="display:flex;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">'
       + ['fg_pct','fg3_pct','ft_pct'].map(function(k) {
@@ -1328,6 +1350,13 @@ function renderCompare(d, c) {
   html += '</div>';
 
   // ── Stat comparison table ────────────────────────────────────────────────
+  // For playoff comparisons show totals; regular season shows per-game averages
+  var tblLabels = isPlayoffs
+    ? { pts:'PTS', reb:'REB', ast:'AST', stl:'STL', blk:'BLK',
+        tov:'TOV', fg_pct:'FG%', fg3_pct:'3P%', fg3a:'3PA', ft_pct:'FT%', gp:'GP' }
+    : statLabels;
+  var playerGPs = players.map(function(p) { return parseFloat((p.averages||{}).gp||0); });
+
   html += '<div style="overflow-x:auto;margin-bottom:32px">'
     + '<table style="width:100%;border-collapse:collapse;font-size:.8rem"><thead><tr>'
     + '<th style="text-align:left;padding:8px 10px;color:var(--muted);font-size:.58rem;'
@@ -1341,18 +1370,27 @@ function renderCompare(d, c) {
     + '</tr></thead><tbody>';
 
   statKeys.forEach(function(key) {
-    var vals  = players.map(function(p) { return parseFloat((p.averages||{})[key]||0); });
-    var isPct = key.indexOf('pct') !== -1;
-    var isTov = key === 'tov';
-    var best  = isTov ? Math.min.apply(null, vals) : Math.max.apply(null, vals);
+    var rawVals = players.map(function(p) { return parseFloat((p.averages||{})[key]||0); });
+    var isPct   = key.indexOf('pct') !== -1;
+    var isTov   = key === 'tov';
+    var isCount = !isPct && key !== 'gp';
+
+    // For totals mode, multiply counting stats by games played for comparison
+    var compVals = (isPlayoffs && isCount)
+      ? rawVals.map(function(v, i) { return v * playerGPs[i]; })
+      : rawVals;
+    var best = isTov ? Math.min.apply(null, compVals) : Math.max.apply(null, compVals);
 
     html += '<tr style="border-bottom:1px solid rgba(255,255,255,.03)">'
       + '<td style="padding:7px 10px;color:var(--muted);font-size:.64rem;'
-      +   'text-transform:uppercase;letter-spacing:.1em">' + (statLabels[key]||key) + '</td>';
-    vals.forEach(function(v, i) {
-      var isBest = Math.abs(v - best) < 0.01;
+      +   'text-transform:uppercase;letter-spacing:.1em">' + (tblLabels[key]||key) + '</td>';
+    rawVals.forEach(function(v, i) {
+      var compV  = (isPlayoffs && isCount) ? v * playerGPs[i] : v;
+      var isBest = Math.abs(compV - best) < 0.5;
       var col    = isBest ? colors[i] : 'var(--text)';
-      var disp   = isPct ? fmtPct(v) : fmt(v);
+      var disp   = isPct ? fmtPct(v)
+                 : (isPlayoffs && isCount) ? String(Math.round(v * playerGPs[i]))
+                 : fmt(v);
       html += '<td style="text-align:right;padding:7px 10px;font-family:\'Barlow Condensed\',sans-serif;'
         + 'font-size:1.25rem;font-weight:' + (isBest?'900':'500') + ';color:' + col + '">' + disp + '</td>';
     });

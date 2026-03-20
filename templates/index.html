@@ -1442,7 +1442,8 @@ function renderCompare(d, c) {
             +   '<span style="font-size:.68rem;color:' + (s.wins > s.losses ? 'var(--win)' : 'var(--loss)') + ';font-weight:600">'
             +     s.result + '</span>'
             + '</div>'
-            + '<div style="display:flex;gap:14px">'
+            // Row 1 — counting stats
+            + '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:7px">'
             +   '<div><span style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.5rem;font-weight:900;color:' + col + '">'
             +     fmt(sAvg.pts) + '</span> <span style="font-size:.58rem;color:var(--muted)">PPG</span></div>'
             +   '<div><span style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.1rem;font-weight:700">'
@@ -1450,9 +1451,20 @@ function renderCompare(d, c) {
             +   '<div><span style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.1rem;font-weight:700">'
             +     fmt(sAvg.ast) + '</span> <span style="font-size:.55rem;color:var(--muted)">APG</span></div>'
             +   '<div><span style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.1rem;font-weight:700">'
-            +     fmtPct(sAvg.fg_pct||0) + '</span> <span style="font-size:.55rem;color:var(--muted)">FG%</span></div>'
+            +     fmt(sAvg.stl||0) + '</span> <span style="font-size:.55rem;color:var(--muted)">SPG</span></div>'
+            +   '<div><span style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.1rem;font-weight:700">'
+            +     fmt(sAvg.blk||0) + '</span> <span style="font-size:.55rem;color:var(--muted)">BPG</span></div>'
             + '</div>'
-            + '<div style="font-size:.6rem;color:var(--muted);margin-top:4px">' + s.games + ' games</div>'
+            // Row 2 — shooting splits
+            + '<div style="display:flex;gap:14px;padding-top:6px;border-top:1px solid var(--border)">'
+            +   '<div><span style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.1rem;font-weight:700">'
+            +     fmtPct(sAvg.fg_pct||0) + '</span> <span style="font-size:.55rem;color:var(--muted)">FG%</span></div>'
+            +   '<div><span style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.1rem;font-weight:700">'
+            +     fmtPct(sAvg.fg3_pct||0) + '</span> <span style="font-size:.55rem;color:var(--muted)">3P%</span></div>'
+            +   '<div><span style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.1rem;font-weight:700">'
+            +     fmtPct(sAvg.ft_pct||0) + '</span> <span style="font-size:.55rem;color:var(--muted)">FT%</span></div>'
+            + '</div>'
+            + '<div style="font-size:.6rem;color:var(--muted);margin-top:6px">' + s.games + ' games</div>'
             + '</div>';
         });
       }

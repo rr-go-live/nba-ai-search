@@ -1404,50 +1404,56 @@ function fetchH2HMatrix() {
     players.forEach(function(p) { colorMap[p.player_id] = p.color; });
 
     body.innerHTML = pairs.map(function(pair) {
-      var gp      = pair.gp || 0;
-      var aWins   = pair.a_wins || 0;
-      var aLoss   = pair.a_losses || 0;
-      var bWins   = pair.b_wins || 0;
-      var aWpct   = gp > 0 ? (aWins / gp * 100) : 0;
-      var bWpct   = gp > 0 ? (bWins / gp * 100) : 0;
-      var colA    = colorMap[pair.player_a_id] || '#f7941d';
-      var colB    = colorMap[pair.player_b_id] || '#4a9fce';
-      var nameA   = pair.player_a_name || 'Player A';
-      var nameB   = pair.player_b_name || 'Player B';
-      // Short first name for display
-      var shortA  = nameA.split(' ').pop();
-      var shortB  = nameB.split(' ').pop();
+      var gp    = pair.gp || 0;
+      var aWins = pair.a_wins  || 0;
+      var aLoss = pair.a_losses || 0;
+      var bWins = pair.b_wins  || 0;
+      var bLoss = pair.b_losses || 0;
+      var colA  = colorMap[pair.player_a_id] || '#f7941d';
+      var colB  = colorMap[pair.player_b_id] || '#4a9fce';
+      var nameA = pair.player_a_name || 'Player A';
+      var nameB = pair.player_b_name || 'Player B';
+      var shortA = nameA.split(' ').pop();
+      var shortB = nameB.split(' ').pop();
+
+      // Show the winning player's perspective; if tied, show A (arbitrary)
+      var tied    = aWins === bWins;
+      var winnerIsA = tied || aWins > bWins;
+      var winCol  = winnerIsA ? colA : colB;
+      var loseCol = winnerIsA ? colB : colA;
+      var winName = winnerIsA ? nameA : nameB;
+      var loseName= winnerIsA ? nameB : nameA;
+      var wins    = winnerIsA ? aWins : bWins;
+      var losses  = winnerIsA ? aLoss : bLoss;
+      var winPct  = gp > 0 ? (wins / gp * 100) : 0;
+      var losePct = 100 - winPct;
+      var winShort = winnerIsA ? shortA : shortB;
+      var loseShort= winnerIsA ? shortB : shortA;
 
       return '<div style="background:var(--surface2);border-radius:10px;padding:16px 18px">'
-        // Header: PlayerA vs PlayerB
+        // Header
         + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.58rem;font-weight:700;'
-        +   'letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">'
-        +   '<span style="color:' + colA + '">' + shortA + '</span>'
+        +   'letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">'
+        +   '<span style="color:' + winCol + '">' + winShort + '</span>'
         +   ' <span style="opacity:.5">vs</span> '
-        +   '<span style="color:' + colB + '">' + shortB + '</span>'
+        +   '<span style="color:' + loseCol + '">' + loseShort + '</span>'
         + '</div>'
-        // Records row
-        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
-        +   '<div style="text-align:left">'
-        +     '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.7rem;font-weight:900;'
-        +       'line-height:1;color:' + colA + '">' + aWins + '<span style="font-size:1rem;opacity:.7">W</span>'
-        +       '&ndash;' + aLoss + '<span style="font-size:1rem;opacity:.7">L</span></div>'
-        +     '<div style="font-size:.55rem;color:var(--muted);margin-top:2px">' + nameA + '</div>'
-        +   '</div>'
-        +   '<div style="font-size:.65rem;color:var(--muted);font-family:\'DM Mono\',monospace">'
-        +     gp + ' games'
-        +   '</div>'
-        +   '<div style="text-align:right">'
-        +     '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.7rem;font-weight:900;'
-        +       'line-height:1;color:' + colB + '">' + bWins + '<span style="font-size:1rem;opacity:.7">W</span>'
-        +       '&ndash;' + aWins + '<span style="font-size:1rem;opacity:.7">L</span></div>'
-        +     '<div style="font-size:.55rem;color:var(--muted);margin-top:2px">' + nameB + '</div>'
-        +   '</div>'
+        // Winner record — large, centered
+        + '<div style="margin-bottom:6px">'
+        +   '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:2.2rem;font-weight:900;'
+        +     'line-height:1;color:' + winCol + '">'
+        +     wins + '<span style="font-size:1.1rem;opacity:.7">W</span>'
+        +     '&ndash;' + losses + '<span style="font-size:1.1rem;opacity:.7">L</span>'
+        +   '</span>'
+        +   (tied ? ' <span style="font-size:.6rem;color:var(--muted);vertical-align:middle">TIED</span>' : '')
         + '</div>'
-        // Split bar: A color | B color, split at A's win%
-        + '<div style="height:8px;border-radius:99px;overflow:hidden;display:flex">'
-        +   '<div style="flex:' + aWpct.toFixed(2) + ';background:' + colA + '"></div>'
-        +   '<div style="flex:' + bWpct.toFixed(2) + ';background:' + colB + '"></div>'
+        + '<div style="font-size:.58rem;color:var(--muted);margin-bottom:10px">'
+        +   winName + ' &bull; ' + gp + ' games &bull; ' + winPct.toFixed(1) + '%'
+        + '</div>'
+        // Split bar
+        + '<div style="height:7px;border-radius:99px;overflow:hidden;display:flex">'
+        +   '<div style="flex:' + winPct.toFixed(2) + ';background:' + winCol + '"></div>'
+        +   '<div style="flex:' + losePct.toFixed(2) + ';background:' + loseCol + ';opacity:.35"></div>'
         + '</div>'
         + '</div>';
     }).join('');

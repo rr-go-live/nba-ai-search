@@ -1056,6 +1056,12 @@ def get_h2h_matrix(players: list) -> dict:
                 b_team = tmap_b.get(sid, "")
                 if not b_team:
                     continue
+                # Skip games where A and B were teammates — if A's team for this
+                # specific game matches B's season team, they played together, not
+                # against each other (e.g. Curry+Durant both on GSW 2016-19).
+                a_game_team = str(g.get("TEAM_ABBREVIATION", ""))
+                if a_game_team == b_team:
+                    continue
                 if b_team in str(g.get("MATCHUP", "")):
                     wl = str(g.get("WL", ""))
                     if wl == "W":

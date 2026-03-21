@@ -227,18 +227,21 @@ tbody td { padding: 8px 10px; white-space: nowrap; transition: font-size .15s ea
 </div><!-- .app -->
 
 <script>
-// ─── Team colors (primary, secondary) ──────────────────────────────────────
+// ─── Team colors [primary, secondary] ────────────────────────────────────────
+// Primary  = visibility-corrected for dark bg (matches NBA_TEAM_COLORS)
+// Secondary = used when two players share a similar primary (H2H / compare)
+//             Must have luminance > 40 and be distinct from the primary
 var TC = {
-  ATL:['#E03A3E','#C1D32F'], BOS:['#007A33','#BA9653'], BKN:['#AAAAAA','#000000'],
-  CHA:['#00788C','#1D1160'], CHI:['#CE1141','#000000'], CLE:['#FDBB30','#860038'],
-  DAL:['#00538C','#B8C4CA'], DEN:['#FEC524','#0E2240'], DET:['#1D42BA','#C8102E'],
-  GSW:['#FFC72C','#1D428A'], HOU:['#CE1141','#C4CED4'], IND:['#FDBB30','#002D62'],
-  LAC:['#C8102E','#1D428A'], LAL:['#FDB927','#552583'], MEM:['#5D76A9','#12173F'],
-  MIA:['#98002E','#F9A01B'], MIL:['#00471B','#EEE1C6'], MIN:['#78BE20','#0C2340'],
-  NOP:['#C8102E','#0C2340'], NYK:['#F58426','#006BB6'], OKC:['#EF3B24','#007AC1'],
-  ORL:['#0077C0','#C4CED4'], PHI:['#ED174C','#006BB6'], PHX:['#E56020','#1D1160'],
-  POR:['#E03A3E','#000000'], SAC:['#5A2D81','#63727A'], SAS:['#8A9BA8','#000000'],
-  TOR:['#CE1141','#000000'], UTA:['#00471B','#002B5C'], WAS:['#E31837','#002B5C']
+  ATL:['#E03A3E','#C1D32F'], BOS:['#00C05A','#BA9653'], BKN:['#AAAAAA','#5A5A5A'],
+  CHA:['#00BCD1','#9D65C9'], CHI:['#CE1141','#6B8BCC'], CLE:['#FDBB30','#9B2335'],
+  DAL:['#0096D6','#B8C4CA'], DEN:['#FEC524','#3472A8'], DET:['#C8102E','#1D42BA'],
+  GSW:['#FFC72C','#1D428A'], HOU:['#CE1141','#9A9FA6'], IND:['#FDBB30','#4A7BAA'],
+  LAC:['#C8102E','#1D428A'], LAL:['#FDB927','#552583'], MEM:['#5D76A9','#F5B920'],
+  MIA:['#DC143C','#F9A01B'], MIL:['#00DE8C','#8B6914'], MIN:['#4A9FD4','#C8A956'],
+  NOP:['#C8A956','#E31837'], NYK:['#F58426','#006BB6'], OKC:['#EF3B24','#007AC1'],
+  ORL:['#0099E6','#9A9FA6'], PHI:['#0091EA','#ED174C'], PHX:['#E56020','#9B59D0'],
+  POR:['#E03A3E','#7A7A7A'], SAC:['#9B59D0','#63727A'], SAS:['#C4CED4','#7A7A7A'],
+  TOR:['#CE1141','#7A7A7A'], UTA:['#F9A01B','#3472A8'], WAS:['#E31837','#4A7BAA']
 };
 
 function _lum(hex) {
@@ -288,10 +291,10 @@ function resolveCompareColors(players) {
     // Check against already-assigned colors
     var tooClose = assigned.some(function(c) { return _colorDist(c, col) < 40; });
     if (tooClose) {
-      // Try secondary
+      // Primary is too similar to an already-assigned color — try secondary
       var sec = teamColor(p.team_abbr, true);
       var secTooClose = assigned.some(function(c) { return _colorDist(c, sec) < 40; });
-      col = secTooClose ? sec : sec;
+      col = secTooClose ? col : sec;  // use secondary if distinct, else keep primary
     }
     assigned.push(col);
   });
@@ -337,9 +340,8 @@ var NBA_TEAM_COLORS = {
   'UTA': '#F9A01B',  // Jazz yellow           — fine
   'WAS': '#E31837'   // Wizards red           — fine
 };
-function teamColor(abbr) {
-  return NBA_TEAM_COLORS[abbr] || getComputedStyle(document.documentElement).getPropertyValue('--tp').trim() || '#f7941d';
-}
+// NOTE: teamColor(abbr, preferSecondary) is defined above using the TC table.
+// NBA_TEAM_COLORS is kept for the leaderboard bar chart which needs a flat lookup.
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 var charts = {};
@@ -612,8 +614,11 @@ function renderH2H(d, c) {
   var oAvg = d.opponent_averages || {};
   var p  = d.player || {};
   var op = d.opponent_player || {};
-  var pCol = teamColor(p.team_abbr);
-  var oCol = teamColor(op.team_abbr);
+  // Use resolveCompareColors so similar primaries (e.g. LAL gold vs GSW gold)
+  // automatically fall back to that team's secondary color
+  var h2hColors = resolveCompareColors([p, op]);
+  var pCol = h2hColors[0];
+  var oCol = h2hColors[1];
   var pHs = p.headshot_url  || hsUrl(p.player_id);
   var oHs = op.headshot_url || hsUrl(op.player_id);
 

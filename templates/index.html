@@ -1450,10 +1450,14 @@ function fetchH2HMatrix() {
         + '<div style="font-size:.58rem;color:var(--muted);margin-bottom:10px">'
         +   winName + ' &bull; ' + gp + ' games &bull; ' + winPct.toFixed(1) + '%'
         + '</div>'
-        // Split bar
-        + '<div style="height:7px;border-radius:99px;overflow:hidden;display:flex">'
-        +   '<div style="flex:' + winPct.toFixed(2) + ';background:' + winCol + '"></div>'
-        +   '<div style="flex:' + losePct.toFixed(2) + ';background:' + loseCol + ';opacity:.35"></div>'
+        // Split bar with hover tooltips showing W/L counts
+        + '<div style="height:7px;border-radius:99px;overflow:hidden;display:flex;cursor:default">'
+        +   '<div title="' + winName + ': ' + wins + 'W (' + winPct.toFixed(1) + '%)"'
+        +     ' style="flex:' + winPct.toFixed(2) + ';background:' + winCol + ';'
+        +     'transition:opacity .15s" onmouseenter="this.style.opacity=\'.75\'" onmouseleave="this.style.opacity=\'1\'"></div>'
+        +   '<div title="' + loseName + ': ' + losses + 'W (' + losePct.toFixed(1) + '%)"'
+        +     ' style="flex:' + losePct.toFixed(2) + ';background:' + loseCol + ';opacity:.35;'
+        +     'transition:opacity .15s" onmouseenter="this.style.opacity=\'.6\'" onmouseleave="this.style.opacity=\'.35\'"></div>'
         + '</div>'
         + '</div>';
     }).join('');
@@ -1483,17 +1487,29 @@ function renderCompare(d, c) {
   var colors = resolveCompareColors(players);
 
   // ── Header ──────────────────────────────────────────────────────────────
-  // Colorize title: split on "vs" and paint each half with its player's team color
-  var rawTitle   = d.title || 'Comparison';
-  var vsParts    = rawTitle.split(/\s+vs\.?\s+/i);
-  var coloredTitle;
-  if (vsParts.length >= 2) {
-    coloredTitle = '<span style="color:' + colors[0] + '">' + vsParts[0] + '</span>'
-      + ' <span style="color:var(--muted);font-size:1.6rem;font-weight:400">vs</span> '
-      + '<span style="color:' + colors[1] + '">' + vsParts[1] + '</span>';
-  } else {
-    coloredTitle = rawTitle;
-  }
+  // Colorize title: replace each player's name with a colored span.
+  // Works for both 2-player "vs" titles and multi-player comma titles.
+  var rawTitle     = d.title || 'Comparison';
+  var coloredTitle = rawTitle;
+  // Replace longest names first to avoid partial matches (e.g. "James" inside "LeBron James")
+  var sortedPlayers = players.slice().sort(function(a, b) {
+    return (b.name || '').length - (a.name || '').length;
+  });
+  sortedPlayers.forEach(function(p) {
+    var idx = players.indexOf(p);
+    var col = colors[idx] || colors[0];
+    if (p.name) {
+      coloredTitle = coloredTitle.replace(
+        p.name,
+        '<span style="color:' + col + '">' + p.name + '</span>'
+      );
+    }
+  });
+  // Dim the "vs" / commas / colons so player names pop
+  coloredTitle = coloredTitle
+    .replace(/\bvs\.?\b/gi, '<span style="color:var(--muted);font-weight:400">vs</span>')
+    .replace(/,/g, '<span style="color:var(--muted);font-weight:400">,</span>')
+    .replace(/:/, '<span style="color:var(--muted);font-weight:400">:</span>');
 
   var html = '<div style="padding:28px 0 20px;border-bottom:1px solid var(--border);margin-bottom:28px">'
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.7rem;font-weight:700;'

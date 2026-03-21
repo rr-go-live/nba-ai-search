@@ -671,19 +671,23 @@ function renderCareer(d, c) {
   var tot     = d.career_totals || {};
   var psn     = d.playoff_seasons || [];
 
+  var multiSeason = seasons.length > 1;
+
   c.innerHTML = playerHeaderHtml(d.player, null, [
     '<div class="meta-tag">Career GP <span>' + (tot.gp || '') + '</span></div>'
   ])
   + insightHtml(d.insight)
   + '<div class="stat-grid" id="sg"></div>'
   + '<div class="donuts-row" id="donuts"></div>'
-  + '<div class="charts-row"><div class="chart-card full"><div class="chart-title">PPG / RPG / APG by season</div>'
-  +   '<div class="chart-wrap tall"><canvas id="chart-career"></canvas></div></div></div>'
+  + (multiSeason
+      ? '<div class="charts-row"><div class="chart-card full"><div class="chart-title">PPG / RPG / APG by season</div>'
+        + '<div class="chart-wrap tall"><canvas id="chart-career"></canvas></div></div></div>'
+      : '')
   + '<div id="log-area"></div>';
 
   buildStatCardsCareer('sg', tot);
   buildDonuts('donuts', tot, null);
-  buildCareerChart('chart-career', seasons, d.player);
+  if (multiSeason) buildCareerChart('chart-career', seasons, d.player);
   buildCareerTable('log-area', seasons, psn);
 }
 

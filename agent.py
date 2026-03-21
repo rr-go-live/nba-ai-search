@@ -633,10 +633,16 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
 
     elif result_type == "conditional" and cond_results:
         raw = cond_results[-1]
-        if "primary_log"      in raw: result["primary_log"]      = raw["primary_log"]
-        if "comparison_log"   in raw: result["comparison_log"]   = raw["comparison_log"]
-        if "primary_games"    in raw: result["primary_games"]    = raw["primary_games"]
-        if "comparison_games" in raw: result["comparison_games"] = raw["comparison_games"]
+        if "primary_log"         in raw: result["primary_log"]         = raw["primary_log"]
+        if "comparison_log"      in raw: result["comparison_log"]      = raw["comparison_log"]
+        if "primary_games"       in raw: result["primary_games"]       = raw["primary_games"]
+        if "comparison_games"    in raw: result["comparison_games"]    = raw["comparison_games"]
+        # Always override averages from the tool result — the model re-formats
+        # fg_pct/fg3_pct/ft_pct as 0–1 decimals (e.g. 0.472) instead of the
+        # 0–100 values that _build_averages returns (e.g. 47.2), causing the
+        # split cards and donut charts to display 0.5% instead of 47.2%.
+        if "primary_averages"    in raw: result["primary_averages"]    = raw["primary_averages"]
+        if "comparison_averages" in raw: result["comparison_averages"] = raw["comparison_averages"]
 
     elif result_type == "h2h" and len(cond_results) >= 2:
         result["player_log"]     = cond_results[0].get("primary_log",   result.get("player_log",   []))

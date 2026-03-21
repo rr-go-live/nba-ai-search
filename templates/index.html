@@ -1473,12 +1473,9 @@ function renderCompare(d, c) {
   });
   html += '</div>';
 
-  // ── Stat comparison table ────────────────────────────────────────────────
-  // For playoff comparisons show totals; regular season shows per-game averages
-  var tblLabels = isPlayoffs
-    ? { pts:'PTS', reb:'REB', ast:'AST', stl:'STL', blk:'BLK',
-        tov:'TOV', fg_pct:'FG%', fg3_pct:'3P%', fg3a:'3PA', ft_pct:'FT%', gp:'GP' }
-    : statLabels;
+  // ── Stat comparison table — always shows career/run totals ──────────────
+  var tblLabels = { pts:'PTS', reb:'REB', ast:'AST', stl:'STL', blk:'BLK',
+                    tov:'TOV', fg_pct:'FG%', fg3_pct:'3P%', fg3a:'3PA', ft_pct:'FT%', gp:'GP' };
   var playerGPs = players.map(function(p) { return parseFloat((p.averages||{}).gp||0); });
 
   html += '<div style="overflow-x:auto;margin-bottom:32px">'
@@ -1499,8 +1496,8 @@ function renderCompare(d, c) {
     var isTov   = key === 'tov';
     var isCount = !isPct && key !== 'gp';
 
-    // For totals mode, multiply counting stats by games played for comparison
-    var compVals = (isPlayoffs && isCount)
+    // Always show totals for counting stats — multiply per-game × GP
+    var compVals = isCount
       ? rawVals.map(function(v, i) { return v * playerGPs[i]; })
       : rawVals;
     var best = isTov ? Math.min.apply(null, compVals) : Math.max.apply(null, compVals);
@@ -1509,11 +1506,11 @@ function renderCompare(d, c) {
       + '<td style="padding:7px 10px;color:var(--muted);font-size:.64rem;'
       +   'text-transform:uppercase;letter-spacing:.1em">' + (tblLabels[key]||key) + '</td>';
     rawVals.forEach(function(v, i) {
-      var compV  = (isPlayoffs && isCount) ? v * playerGPs[i] : v;
+      var compV  = isCount ? v * playerGPs[i] : v;
       var isBest = Math.abs(compV - best) < 0.5;
       var col    = isBest ? colors[i] : 'var(--text)';
-      var disp   = isPct ? fmtPct(v)
-                 : (isPlayoffs && isCount) ? String(Math.round(v * playerGPs[i]))
+      var disp   = isPct    ? fmtPct(v)
+                 : isCount  ? String(Math.round(v * playerGPs[i]))
                  : fmt(v);
       html += '<td style="text-align:right;padding:7px 10px;font-family:\'Barlow Condensed\',sans-serif;'
         + 'font-size:1.25rem;font-weight:' + (isBest?'900':'500') + ';color:' + col + '">' + disp + '</td>';
@@ -1522,11 +1519,47 @@ function renderCompare(d, c) {
   });
   html += '</tbody></table></div>';
 
-  // ── Grouped bar chart ────────────────────────────────────────────────────
-  html += '<div class="charts-row"><div class="chart-card full">'
-    + '<div class="chart-title">Stat Comparison — Key Categories</div>'
-    + '<div class="chart-wrap tall"><canvas id="chart-compare"></canvas></div>'
-    + '</div></div>';
+  // ── W-L Record visual ────────────────────────────────────────────────────
+  html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;'
+    + 'padding:24px 28px;margin-bottom:32px">'
+    + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.62rem;font-weight:700;'
+    +   'letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:20px">'
+    +   'Win-Loss Record</div>';
+
+  players.forEach(function(p, i) {
+    var avg  = p.averages || {};
+    var wins = parseInt(avg.wins || 0);
+    var loss = parseInt(avg.losses || 0);
+    var gp   = wins + loss;
+    var wpct = gp > 0 ? (wins / gp * 100) : 0;
+    var col  = colors[i];
+    var wPct = gp > 0 ? (wins / gp * 100).toFixed(1) : '—';
+    var era  = p.label || p.season_range || '';
+
+    html += '<div style="margin-bottom:18px">'
+      // Name row
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px">'
+      +   '<div style="display:flex;align-items:center;gap:10px">'
+      +     '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.05rem;font-weight:800;color:' + col + '">'
+      +       p.name + '</span>'
+      +     (era ? '<span style="font-size:.58rem;color:var(--muted);letter-spacing:.07em">' + era + '</span>' : '')
+      +   '</div>'
+      +   '<div style="display:flex;align-items:baseline;gap:14px">'
+      +     '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:.95rem;font-weight:700;color:var(--text)">'
+      +       wins + 'W&ndash;' + loss + 'L</span>'
+      +     '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;font-weight:900;color:' + col + '">'
+      +       wPct + '%</span>'
+      +   '</div>'
+      + '</div>'
+      // Split bar
+      + '<div style="position:relative;height:10px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden">'
+      +   '<div style="position:absolute;left:0;top:0;height:100%;width:' + wpct.toFixed(2) + '%;'
+      +     'background:' + col + ';border-radius:99px;transition:width .6s ease"></div>'
+      + '</div>'
+      + '</div>';
+  });
+
+  html += '</div>';
 
   // ── Playoff series breakdown (only for Playoffs single-season) ───────────
   var hasSeriesData = isPlayoffs && players.some(function(p) { return (p.series||[]).length > 0; });
@@ -1655,33 +1688,6 @@ function renderCompare(d, c) {
 
   c.innerHTML = html;
 
-  // ── Bar chart ────────────────────────────────────────────────────────────
-  var catLabels = statKeys.filter(function(k) { return k !== 'tov' && k.indexOf('pct') === -1 && k !== 'gp'; });
-  destroyChart('chart-compare');
-  var ctx = document.getElementById('chart-compare');
-  if (ctx) {
-    charts['chart-compare'] = new Chart(ctx.getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels: catLabels.map(function(k) { return (statLabels[k]||k).toUpperCase(); }),
-        datasets: players.map(function(p, i) {
-          return {
-            label: p.label || p.name || 'Player ' + (i+1),
-            data:  catLabels.map(function(k) { return parseFloat((p.averages||{})[k]||0); }),
-            backgroundColor: colors[i] + 'CC',
-            borderRadius: 4
-          };
-        })
-      },
-      options: Object.assign(baseOpts(), {
-        plugins: {
-          legend: { display: true, position: 'top',
-            labels: { color: '#6b7a94', boxWidth: 12, font: { size: 10 } } },
-          tooltip: tooltipOpts()
-        }
-      })
-    });
-  }
 }
 
 // Tab switcher for compare game logs

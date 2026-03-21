@@ -21,7 +21,6 @@ SSE EVENT TYPES (consumed by frontend JS):
 """
 
 import atexit
-import csv
 import json
 import logging
 import os
@@ -43,17 +42,20 @@ PRICE_INPUT_PER_M  = 0.075   # $0.075 / 1M input tokens
 PRICE_OUTPUT_PER_M = 0.30    # $0.30  / 1M output tokens
 
 # ── Session usage store ───────────────────────────────────────────────────────
-SESSION_START   = datetime.utcnow().isoformat()
-USAGE_LOG: list = []          # list of per-query dicts
-USAGE_LOCK      = threading.Lock()
-REPORT_PATH     = "usage_report.csv"
+SESSION_START    = datetime.utcnow()
+SESSION_START_ISO = SESSION_START.isoformat()
 
-CSV_FIELDS = [
-    "timestamp", "query", "api_calls",
-    "input_tokens", "output_tokens",
-    "input_cost_usd", "output_cost_usd", "query_cost_usd",
-    "session_total_cost_usd",
-]
+# usage_data/ folder — one JSON file per server session
+USAGE_DIR = "usage_data"
+os.makedirs(USAGE_DIR, exist_ok=True)
+
+# File name: usage_data/session_2025-03-21T14-30-00.json  (colons → hyphens)
+_safe_ts    = SESSION_START.strftime("%Y-%m-%dT%H-%M-%S")
+SESSION_FILE = os.path.join(USAGE_DIR, f"session_{_safe_ts}.json")
+
+# In-memory query map: { query_text: { ...cost fields... } }
+QUERY_MAP:  dict = {}
+USAGE_LOCK       = threading.Lock()
 
 
 def _compute_cost(input_tok: int, output_tok: int) -> tuple[float, float]:
@@ -64,48 +66,74 @@ def _compute_cost(input_tok: int, output_tok: int) -> tuple[float, float]:
     )
 
 
-def _write_csv():
-    """Write the full session usage log to CSV (called after every query + on exit)."""
+def _write_json():
+    """Flush the current session data to usage_data/<session>.json."""
     with USAGE_LOCK:
-        rows = list(USAGE_LOG)
+        queries   = dict(QUERY_MAP)
 
-    running_total = 0.0
+    now          = datetime.utcnow()
+    elapsed      = round((now - SESSION_START).total_seconds(), 2)
+    total_calls  = sum(q["api_calls"]     for q in queries.values())
+    total_cost   = sum(q["query_cost_usd"] for q in queries.values())
+
+    payload = {
+        "session_start":         SESSION_START_ISO,
+        "session_end":           now.isoformat(),
+        "total_duration_seconds": elapsed,
+        "total_api_calls":       total_calls,
+        "estimated_cost_usd":    round(total_cost, 8),
+        "model":                 "gemini-2.5-flash",
+        "pricing": {
+            "input_per_1m_tokens":  PRICE_INPUT_PER_M,
+            "output_per_1m_tokens": PRICE_OUTPUT_PER_M,
+        },
+        "queries": queries,
+    }
+
     try:
-        with open(REPORT_PATH, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
-            writer.writeheader()
-            for row in rows:
-                running_total += row["query_cost_usd"]
-                writer.writerow({**row, "session_total_cost_usd": round(running_total, 8)})
-        logger.info(f"Usage report written → {REPORT_PATH} ({len(rows)} queries, ${running_total:.6f} total)")
+        with open(SESSION_FILE, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        logger.info(
+            f"Usage report → {SESSION_FILE} "
+            f"({len(queries)} queries, ${total_cost:.6f} total, {elapsed}s elapsed)"
+        )
     except Exception as e:
-        logger.warning(f"Could not write usage report: {e}")
+        logger.warning(f"Could not write usage JSON: {e}")
 
 
 def _record_usage(query: str, usage: dict):
-    """Append one query's usage to the in-memory log and flush to CSV."""
+    """Record one query's usage in the in-memory map and flush to JSON."""
     input_tok  = usage.get("input_tokens",  0)
     output_tok = usage.get("output_tokens", 0)
     api_calls  = usage.get("api_calls",     0)
     in_cost, out_cost = _compute_cost(input_tok, output_tok)
-    row = {
-        "timestamp":        datetime.utcnow().isoformat(),
-        "query":            query,
-        "api_calls":        api_calls,
-        "input_tokens":     input_tok,
-        "output_tokens":    output_tok,
-        "input_cost_usd":   round(in_cost,  8),
-        "output_cost_usd":  round(out_cost, 8),
-        "query_cost_usd":   round(in_cost + out_cost, 8),
-        # session_total_cost_usd filled in _write_csv
-        "session_total_cost_usd": 0.0,
+
+    entry = {
+        "timestamp":       datetime.utcnow().isoformat(),
+        "api_calls":       api_calls,
+        "input_tokens":    input_tok,
+        "output_tokens":   output_tok,
+        "input_cost_usd":  round(in_cost,             8),
+        "output_cost_usd": round(out_cost,            8),
+        "query_cost_usd":  round(in_cost + out_cost,  8),
     }
+
     with USAGE_LOCK:
-        USAGE_LOG.append(row)
-    _write_csv()
+        # If the same query is run multiple times, accumulate rather than overwrite
+        if query in QUERY_MAP:
+            prev = QUERY_MAP[query]
+            entry["api_calls"]       += prev["api_calls"]
+            entry["input_tokens"]    += prev["input_tokens"]
+            entry["output_tokens"]   += prev["output_tokens"]
+            entry["input_cost_usd"]   = round(entry["input_cost_usd"]  + prev["input_cost_usd"],  8)
+            entry["output_cost_usd"]  = round(entry["output_cost_usd"] + prev["output_cost_usd"], 8)
+            entry["query_cost_usd"]   = round(entry["query_cost_usd"]  + prev["query_cost_usd"],  8)
+        QUERY_MAP[query] = entry
+
+    _write_json()
 
 
-atexit.register(_write_csv)  # final flush when Python process exits
+atexit.register(_write_json)  # final flush when Python process exits
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -273,41 +301,47 @@ def health():
 
 @app.route("/api/usage_report")
 def usage_report():
-    """Return the current session's usage/cost CSV as a file download."""
-    _write_csv()          # ensure latest data is flushed
-    if not os.path.exists(REPORT_PATH):
+    """Return the current session's usage JSON as a file download."""
+    _write_json()          # ensure latest data is flushed
+    if not os.path.exists(SESSION_FILE):
         return jsonify({"error": "No usage data yet."}), 404
-    with open(REPORT_PATH, "r", encoding="utf-8") as f:
-        csv_content = f.read()
+    with open(SESSION_FILE, "r", encoding="utf-8") as f:
+        content = f.read()
+    filename = os.path.basename(SESSION_FILE)
     return Response(
-        csv_content,
-        mimetype="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{REPORT_PATH}"'},
+        content,
+        mimetype="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
 @app.route("/api/usage_summary")
 def usage_summary():
-    """Return a JSON summary of session usage and cost."""
+    """Return a live JSON summary of session usage and cost."""
     with USAGE_LOCK:
-        rows = list(USAGE_LOG)
-    total_input  = sum(r["input_tokens"]  for r in rows)
-    total_output = sum(r["output_tokens"] for r in rows)
-    total_calls  = sum(r["api_calls"]     for r in rows)
-    total_cost   = sum(r["query_cost_usd"] for r in rows)
+        queries = dict(QUERY_MAP)
+
+    now         = datetime.utcnow()
+    elapsed     = round((now - SESSION_START).total_seconds(), 2)
+    total_calls = sum(q["api_calls"]      for q in queries.values())
+    total_in    = sum(q["input_tokens"]   for q in queries.values())
+    total_out   = sum(q["output_tokens"]  for q in queries.values())
+    total_cost  = sum(q["query_cost_usd"] for q in queries.values())
+
     return jsonify({
-        "session_start":       SESSION_START,
-        "queries":             len(rows),
-        "total_api_calls":     total_calls,
-        "total_input_tokens":  total_input,
-        "total_output_tokens": total_output,
-        "total_cost_usd":      round(total_cost, 6),
-        "model":               "gemini-2.5-flash",
+        "session_start":          SESSION_START_ISO,
+        "total_duration_seconds": elapsed,
+        "total_api_calls":        total_calls,
+        "total_input_tokens":     total_in,
+        "total_output_tokens":    total_out,
+        "estimated_cost_usd":     round(total_cost, 6),
+        "model":                  "gemini-2.5-flash",
+        "session_file":           SESSION_FILE,
         "pricing": {
             "input_per_1m_tokens":  PRICE_INPUT_PER_M,
             "output_per_1m_tokens": PRICE_OUTPUT_PER_M,
         },
-        "log": rows,
+        "queries": queries,
     })
 
 

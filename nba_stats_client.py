@@ -37,6 +37,14 @@ from config import (
 logger = logging.getLogger(__name__)
 
 
+def _season_year(s: str) -> int:
+    """Convert season string '2015-16' → 2015 (start year)."""
+    try:
+        return int(str(s).split("-")[0])
+    except Exception:
+        return 0
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Headshot
 # ─────────────────────────────────────────────────────────────────────────────
@@ -936,6 +944,138 @@ def get_multi_player_stats(
             results.append({"player_id": pid, "label": label, "error": str(e)})
 
     return {"players": results, "count": len(results)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# H2H matrix
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _season_id_to_year(season_id) -> int:
+    """Convert NBA season_id to start year. Handles '22015', '2015-16', 2015."""
+    s = str(season_id).strip()
+    if "-" in s:
+        try:
+            return int(s.split("-")[0])
+        except Exception:
+            return 0
+    # Numeric format: "22015" (regular season) or "42015" (playoffs)
+    # Last 4 digits are the start year.
+    if len(s) >= 4:
+        try:
+            return int(s[-4:])
+        except Exception:
+            return 0
+    return 0
+
+
+def _fetch_all_player_games(player_id: int, season_type: str = "Regular Season") -> list:
+    """
+    Fetch every career game for a player in one API call via leaguegamefinder.
+    Returns list of dicts with at least: SEASON_ID, TEAM_ABBREVIATION, MATCHUP, WL.
+    """
+    st_param = "Playoffs" if season_type == "Playoffs" else "Regular Season"
+    try:
+        data = nba_http.get_parsed("leaguegamefinder", {
+            "PlayerOrTeam": "P",
+            "PlayerID":     player_id,
+            "LeagueID":     "00",
+            "SeasonType":   st_param,
+        })
+        return data.get("LeagueGameFinderResults", [])
+    except Exception as e:
+        logger.warning(f"leaguegamefinder player {player_id}: {e}")
+        return []
+
+
+def get_h2h_matrix(players: list) -> dict:
+    """
+    Compute head-to-head records for every pair of players.
+
+    players — list of dicts, each with:
+        player_id, name, season_from, season_to, season_type
+
+    Algorithm (one LeagueGameFinder call per player):
+      1. Fetch all career games for every player (MATCHUP, WL, SEASON_ID).
+      2. For each season in player B's games, note which team B was on.
+      3. For each game in player A's log that season, if B's team is in the
+         MATCHUP string, record the WL as an H2H result for (A, B).
+      4. B's record vs A is the mirror (B wins = A losses).
+
+    Returns:
+        {"pairs": [
+            {"player_a_id": .., "player_a_name": .., "player_b_id": .., "player_b_name": ..,
+             "a_wins": .., "a_losses": .., "b_wins": .., "b_losses": .., "gp": ..},
+            ...
+        ]}
+    """
+    if len(players) < 2:
+        return {"pairs": []}
+
+    # Determine season_type from first player (assume homogeneous for compare query)
+    season_type = players[0].get("season_type", "Regular Season")
+
+    # ── Step 1: fetch all games per player (one API call each) ───────────────
+    all_games:       dict[int, list] = {}   # player_id → list of game dicts
+    team_by_season:  dict[int, dict] = {}   # player_id → {season_id → team_abbr}
+
+    for cfg in players:
+        pid = int(cfg["player_id"])
+        time.sleep(NBA_API_DELAY)
+        games = _fetch_all_player_games(pid, season_type)
+        all_games[pid] = games
+
+        # Build season_id → team_abbr map (last team seen wins for TOT seasons)
+        tmap: dict = {}
+        for g in games:
+            sid  = str(g.get("SEASON_ID", ""))
+            team = str(g.get("TEAM_ABBREVIATION", ""))
+            if sid and team and team != "TOT":
+                tmap[sid] = team
+        team_by_season[pid] = tmap
+
+    # ── Step 2: compute H2H for each unique pair ─────────────────────────────
+    pairs = []
+    for i in range(len(players)):
+        for j in range(i + 1, len(players)):
+            cfg_a = players[i]
+            cfg_b = players[j]
+            pid_a = int(cfg_a["player_id"])
+            pid_b = int(cfg_b["player_id"])
+
+            y_from = _season_year(cfg_a.get("season_from", "1996-97"))
+            y_to   = _season_year(cfg_a.get("season_to",   DEFAULT_SEASON))
+
+            tmap_b = team_by_season.get(pid_b, {})
+
+            a_wins = a_losses = 0
+            for g in all_games.get(pid_a, []):
+                sid    = str(g.get("SEASON_ID", ""))
+                s_year = _season_id_to_year(sid)
+                if not (y_from <= s_year <= y_to):
+                    continue
+                b_team = tmap_b.get(sid, "")
+                if not b_team:
+                    continue
+                if b_team in str(g.get("MATCHUP", "")):
+                    wl = str(g.get("WL", ""))
+                    if wl == "W":
+                        a_wins += 1
+                    elif wl == "L":
+                        a_losses += 1
+
+            pairs.append({
+                "player_a_id":   pid_a,
+                "player_a_name": cfg_a.get("name", ""),
+                "player_b_id":   pid_b,
+                "player_b_name": cfg_b.get("name", ""),
+                "a_wins":   a_wins,
+                "a_losses": a_losses,
+                "b_wins":   a_losses,   # mirror: B won the games A lost
+                "b_losses": a_wins,
+                "gp":       a_wins + a_losses,
+            })
+
+    return {"pairs": pairs}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

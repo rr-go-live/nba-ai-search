@@ -509,7 +509,7 @@ function renderResults(d) {
   else if (d.type === 'conditional') renderConditional(d, c);
   else if (d.type === 'h2h')         renderH2H(d, c);
   else if (d.type === 'career')      renderCareer(d, c);
-  else if (d.type === 'compare')     renderCompare(d, c);
+  else if (d.type === 'compare')     { renderCompare(d, c); fetchH2HMatrix(); }
   else if (d.type === 'leaderboard') renderLeaderboard(d, c);
   else c.innerHTML = '<pre style="color:var(--muted)">' + JSON.stringify(d, null, 2) + '</pre>';
   c.classList.add('visible');
@@ -1379,6 +1379,86 @@ function gameLogHtml(rows, sortCol, sortDir) {
   return tableHtml + paginationHtml;
 }
 
+// ─── H2H matrix async loader ─────────────────────────────────────────────────
+function fetchH2HMatrix() {
+  var players = window._compareH2HPlayers;
+  if (!players || players.length < 2) return;
+
+  fetch('/api/h2h-matrix', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ players: players }),
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    var body = document.getElementById('h2h-matrix-body');
+    if (!body) return;
+    var pairs = data.pairs || [];
+    if (!pairs.length) {
+      body.innerHTML = '<div style="color:var(--muted);font-size:.75rem">No H2H data found.</div>';
+      return;
+    }
+
+    // Build a color lookup from the embedded player list
+    var colorMap = {};
+    players.forEach(function(p) { colorMap[p.player_id] = p.color; });
+
+    body.innerHTML = pairs.map(function(pair) {
+      var gp      = pair.gp || 0;
+      var aWins   = pair.a_wins || 0;
+      var aLoss   = pair.a_losses || 0;
+      var bWins   = pair.b_wins || 0;
+      var aWpct   = gp > 0 ? (aWins / gp * 100) : 0;
+      var bWpct   = gp > 0 ? (bWins / gp * 100) : 0;
+      var colA    = colorMap[pair.player_a_id] || '#f7941d';
+      var colB    = colorMap[pair.player_b_id] || '#4a9fce';
+      var nameA   = pair.player_a_name || 'Player A';
+      var nameB   = pair.player_b_name || 'Player B';
+      // Short first name for display
+      var shortA  = nameA.split(' ').pop();
+      var shortB  = nameB.split(' ').pop();
+
+      return '<div style="background:var(--surface2);border-radius:10px;padding:16px 18px">'
+        // Header: PlayerA vs PlayerB
+        + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.58rem;font-weight:700;'
+        +   'letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">'
+        +   '<span style="color:' + colA + '">' + shortA + '</span>'
+        +   ' <span style="opacity:.5">vs</span> '
+        +   '<span style="color:' + colB + '">' + shortB + '</span>'
+        + '</div>'
+        // Records row
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+        +   '<div style="text-align:left">'
+        +     '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.7rem;font-weight:900;'
+        +       'line-height:1;color:' + colA + '">' + aWins + '<span style="font-size:1rem;opacity:.7">W</span>'
+        +       '&ndash;' + aLoss + '<span style="font-size:1rem;opacity:.7">L</span></div>'
+        +     '<div style="font-size:.55rem;color:var(--muted);margin-top:2px">' + nameA + '</div>'
+        +   '</div>'
+        +   '<div style="font-size:.65rem;color:var(--muted);font-family:\'DM Mono\',monospace">'
+        +     gp + ' games'
+        +   '</div>'
+        +   '<div style="text-align:right">'
+        +     '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.7rem;font-weight:900;'
+        +       'line-height:1;color:' + colB + '">' + bWins + '<span style="font-size:1rem;opacity:.7">W</span>'
+        +       '&ndash;' + aWins + '<span style="font-size:1rem;opacity:.7">L</span></div>'
+        +     '<div style="font-size:.55rem;color:var(--muted);margin-top:2px">' + nameB + '</div>'
+        +   '</div>'
+        + '</div>'
+        // Split bar: A color | B color, split at A's win%
+        + '<div style="height:8px;border-radius:99px;overflow:hidden;display:flex">'
+        +   '<div style="flex:' + aWpct.toFixed(2) + ';background:' + colA + '"></div>'
+        +   '<div style="flex:' + bWpct.toFixed(2) + ';background:' + colB + '"></div>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+  })
+  .catch(function(e) {
+    var body = document.getElementById('h2h-matrix-body');
+    if (body) body.innerHTML = '<div style="color:var(--muted);font-size:.75rem">H2H data unavailable.</div>';
+    console.error('H2H matrix error:', e);
+  });
+}
+
 // ─── renderCompare ───────────────────────────────────────────────────────────
 function renderCompare(d, c) {
   var players  = d.players || [];
@@ -1519,47 +1599,28 @@ function renderCompare(d, c) {
   });
   html += '</tbody></table></div>';
 
-  // ── W-L Record visual ────────────────────────────────────────────────────
-  html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;'
-    + 'padding:24px 28px;margin-bottom:32px">'
+  // ── H2H matrix visual (populated async after render) ────────────────────
+  html += '<div id="h2h-matrix-card" style="background:var(--surface);border:1px solid var(--border);'
+    + 'border-radius:14px;padding:24px 28px;margin-bottom:32px">'
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.62rem;font-weight:700;'
     +   'letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:20px">'
-    +   'Win-Loss Record</div>';
+    +   'Head-to-Head Records</div>'
+    + '<div id="h2h-matrix-body" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">'
+    +   '<div style="color:var(--muted);font-size:.75rem;padding:8px 0">Loading H2H records…</div>'
+    + '</div>'
+    + '</div>';
 
-  players.forEach(function(p, i) {
-    var avg  = p.averages || {};
-    var wins = parseInt(avg.wins || 0);
-    var loss = parseInt(avg.losses || 0);
-    var gp   = wins + loss;
-    var wpct = gp > 0 ? (wins / gp * 100) : 0;
-    var col  = colors[i];
-    var wPct = gp > 0 ? (wins / gp * 100).toFixed(1) : '—';
-    var era  = p.label || p.season_range || '';
-
-    html += '<div style="margin-bottom:18px">'
-      // Name row
-      + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px">'
-      +   '<div style="display:flex;align-items:center;gap:10px">'
-      +     '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.05rem;font-weight:800;color:' + col + '">'
-      +       p.name + '</span>'
-      +     (era ? '<span style="font-size:.58rem;color:var(--muted);letter-spacing:.07em">' + era + '</span>' : '')
-      +   '</div>'
-      +   '<div style="display:flex;align-items:baseline;gap:14px">'
-      +     '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:.95rem;font-weight:700;color:var(--text)">'
-      +       wins + 'W&ndash;' + loss + 'L</span>'
-      +     '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;font-weight:900;color:' + col + '">'
-      +       wPct + '%</span>'
-      +   '</div>'
-      + '</div>'
-      // Split bar
-      + '<div style="position:relative;height:10px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden">'
-      +   '<div style="position:absolute;left:0;top:0;height:100%;width:' + wpct.toFixed(2) + '%;'
-      +     'background:' + col + ';border-radius:99px;transition:width .6s ease"></div>'
-      + '</div>'
-      + '</div>';
-  });
-
-  html += '</div>';
+  // Embed player metadata for the async H2H fetch
+  html += '<script>window._compareH2HPlayers = ' + JSON.stringify(players.map(function(p, i) {
+    return {
+      player_id:   p.player_id,
+      name:        p.name || '',
+      season_from: p.season_from || '',
+      season_to:   p.season_to   || '',
+      season_type: p.season_type || 'Regular Season',
+      color:       colors[i],
+    };
+  })) + ';<\/script>';
 
   // ── Playoff series breakdown (only for Playoffs single-season) ───────────
   var hasSeriesData = isPlayoffs && players.some(function(p) { return (p.series||[]).length > 0; });

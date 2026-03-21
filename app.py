@@ -294,6 +294,25 @@ def status(job_id: str):
     })
 
 
+@app.route("/api/h2h-matrix", methods=["POST"])
+def h2h_matrix():
+    """
+    Compute H2H records for every pair from a compare result.
+    Body: {"players": [{player_id, name, season_from, season_to, season_type}, ...]}
+    """
+    import nba_stats_client as nba
+    body    = request.get_json(force=True, silent=True) or {}
+    players = body.get("players", [])
+    if len(players) < 2:
+        return jsonify({"error": "Need at least 2 players"}), 400
+    try:
+        result = nba.get_h2h_matrix(players)
+        return jsonify(result)
+    except Exception as e:
+        logger.exception(f"h2h-matrix error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok", "jobs": len(JOBS)})

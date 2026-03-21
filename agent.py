@@ -544,6 +544,29 @@ class NBAStatsAgent:
                     f"output TRUNCATED. Increase AGENT_MAX_TOKENS (currently {AGENT_MAX_TOKENS}). ***"
                 )
 
+            # MALFORMED_FUNCTION_CALL: Gemini generated a tool call that failed
+            # its own schema validation (commonly happens with get_multi_player_stats
+            # when the nested players array has 4+ entries). Inject a retry message
+            # with explicit formatting constraints so Gemini can self-correct.
+            if finish_reason is not None and "MALFORMED_FUNCTION_CALL" in str(finish_reason):
+                logger.warning(
+                    f"[DEBUG] MALFORMED_FUNCTION_CALL at iter={iteration} — injecting retry message"
+                )
+                contents.append(types.Content(role="user", parts=[types.Part(text=(
+                    "Your last function call was malformed and could not be executed. "
+                    "Please call get_multi_player_stats again with strictly valid arguments:\n"
+                    "• players must be an array of objects\n"
+                    "• Each object MUST have: player_id (integer), season_from (string), "
+                    "season_to (string)\n"
+                    "• Optional fields: season_type (string), label (string)\n"
+                    "• Do NOT include any extra fields or null values\n"
+                    "• player_id must be a plain integer — no quotes, no decimals\n"
+                    "Example: {\"player_id\": 2544, \"season_from\": \"2003-04\", "
+                    "\"season_to\": \"2025-26\", \"season_type\": \"Regular Season\", "
+                    "\"label\": \"LeBron Career\"}"
+                ))]))
+                continue
+
             if text_parts:
                 last_text = " ".join(p.text for p in text_parts)
                 logger.info(f"[DEBUG] iter={iteration} last_text length={len(last_text)} has_json_block={'```json' in last_text}")

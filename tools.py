@@ -162,20 +162,19 @@ TOOL_DEFINITIONS = [
             "properties": {
                 "players": {
                     "type": "array",
-                    "description": "List of player configs, one per player (2-6 players)",
+                    "description": "List of player configs, one per player (2-6 players). Each entry MUST include player_id (integer), season_from (string e.g. '2003-04'), season_to (string), season_type (string), label (string).",
                     "items": {
                         "type": "object",
                         "properties": {
-                            "player_id":   {"type": "integer", "description": "NBA player ID"},
-                            "season_from": {"type": "string",  "description": "Start season e.g. '2009-10'"},
-                            "season_to":   {"type": "string",  "description": "End season e.g. '2009-10'"},
+                            "player_id":   {"type": "integer", "description": "NBA player ID — must be a plain integer"},
+                            "season_from": {"type": "string",  "description": "Start season e.g. '2003-04'"},
+                            "season_to":   {"type": "string",  "description": "End season e.g. '2025-26'"},
                             "season_type": {"type": "string",  "description": "'Regular Season' or 'Playoffs'"},
-                            "label":       {"type": "string",  "description": "Display label e.g. 'Kobe 2010 Finals'"},
+                            "label":       {"type": "string",  "description": "Display label e.g. 'LeBron Career'"},
                         },
-                        "required": ["player_id", "season_from", "season_to"],
+                        # No nested required — Gemini rejects calls with required inside items.
+                        # The description above and system prompt enforce the fields instead.
                     },
-                    "minItems": 2,
-                    "maxItems": 6,
                 },
             },
             "required": ["players"],
@@ -278,9 +277,13 @@ def execute_tool(tool_name: str, tool_input: dict) -> dict:
         )
 
     elif tool_name == "get_multi_player_stats":
-        # Fill in default season_to if omitted per player config
+        # Fill in defaults and coerce types — Gemini sometimes sends player_id
+        # as a float (e.g. 2544.0) or omits season_to; normalise here so the
+        # backend never receives bad types.
         players = tool_input.get("players", [])
         for cfg in players:
+            if "player_id" in cfg:
+                cfg["player_id"] = int(cfg["player_id"])
             if not cfg.get("season_to"):
                 cfg["season_to"] = cfg.get("season_from", nba.DEFAULT_SEASON)
             if not cfg.get("season_type"):

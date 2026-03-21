@@ -333,9 +333,11 @@ def _avg(rows: list) -> dict:
         "blk":     mean("BLK"),
         "tov":     mean("TOV"),
         "fg_pct":  pct("FG_PCT"),
+        "fga":     mean("FGA"),    # field goal attempts per game (for donut hover)
         "fg3_pct": pct("FG3_PCT"),
         "fg3a":    mean("FG3A"),   # three-point attempt volume
         "ft_pct":  pct("FT_PCT"),
+        "fta":     mean("FTA"),    # free throw attempts per game (for donut hover)
         "wins":    wins,
         "losses":  n - wins,
     }

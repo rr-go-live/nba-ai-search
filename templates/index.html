@@ -348,6 +348,18 @@ var sortState = { col: null, dir: 'desc' };
 var currentLog = [];
 var logPage = 0;
 var LOG_PAGE_SIZE = 25;
+var logFilters = { opp: '', ha: 'all' };
+
+function getFilteredLog() {
+  return currentLog.filter(function(g) {
+    var matchup = (g.matchup || '').toLowerCase();
+    var isAway  = matchup.indexOf('@') !== -1;
+    if (logFilters.ha === 'home' && isAway)  return false;
+    if (logFilters.ha === 'away' && !isAway) return false;
+    if (logFilters.opp && matchup.indexOf(logFilters.opp.toLowerCase()) === -1) return false;
+    return true;
+  });
+}
 
 function setQ(el) { document.getElementById('query-input').value = el.textContent.trim(); }
 
@@ -1167,6 +1179,7 @@ function buildGameLog(containerId, primaryLog, secondaryLog, aName, bName) {
   logA = primaryLog || [];
   logB = secondaryLog || [];
   sortState = { col: null, dir: 'desc' };
+  logFilters = { opp: '', ha: 'all' };
   currentLog = logA;
   logPage = 0;
 
@@ -1177,22 +1190,69 @@ function buildGameLog(containerId, primaryLog, secondaryLog, aName, bName) {
     ? '<div class="toggle-btns"><button id="btn-la" class="on" onclick="switchLog(\'a\')">' + aLbl + '</button><button id="btn-lb" onclick="switchLog(\'b\')">' + bLbl + '</button></div>'
     : '';
 
+  function haBtn(val, label) {
+    var active = val === 'all';
+    return '<button id="ha-' + val + '" onclick="setLogFilter(\'ha\',\'' + val + '\')" style="'
+      + 'background:' + (active ? 'var(--tp)' : 'var(--surface2)') + ';'
+      + 'color:' + (active ? '#000' : 'var(--muted)') + ';'
+      + 'border:1px solid var(--border);border-radius:6px;padding:5px 13px;'
+      + 'font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;cursor:pointer">'
+      + label + '</button>';
+  }
+
+  var filterBar = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">'
+    + '<input id="log-opp-input" placeholder="Filter opponent…" oninput="setLogFilter(\'opp\',this.value)" style="'
+    +   'background:var(--surface2);border:1px solid var(--border);border-radius:6px;'
+    +   'padding:6px 10px;color:var(--text);font-family:\'DM Mono\',monospace;font-size:.7rem;width:170px;outline:none">'
+    + '<div style="display:flex;gap:5px">'
+    +   haBtn('all', 'All') + haBtn('home', 'Home') + haBtn('away', 'Away')
+    + '</div>'
+    + '</div>';
+
   container.innerHTML = '<div class="log-section">'
     + '<div class="log-header">'
     +   '<div class="log-title">Game Log</div>'
     +   '<div style="display:flex;gap:12px;align-items:center">' + toggle
     +   '<div class="log-count" id="log-count">' + logA.length + ' games</div></div>'
     + '</div>'
-    + '<div class="table-wrap" id="log-tbl-wrap">' + gameLogHtml(logA) + '</div>'
+    + filterBar
+    + '<div class="table-wrap" id="log-tbl-wrap">' + gameLogHtml(getFilteredLog()) + '</div>'
     + '</div>';
 }
+
+window.setLogFilter = function(key, val) {
+  logFilters[key] = val;
+  logPage = 0;
+  if (key === 'ha') {
+    ['all','home','away'].forEach(function(v) {
+      var btn = document.getElementById('ha-' + v);
+      if (!btn) return;
+      btn.style.background = v === val ? 'var(--tp)' : 'var(--surface2)';
+      btn.style.color      = v === val ? '#000'       : 'var(--muted)';
+    });
+  }
+  var filtered = getFilteredLog();
+  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(filtered, sortState.col, sortState.dir);
+  document.getElementById('log-count').textContent  = filtered.length + ' games';
+};
 
 window.switchLog = function(side) {
   currentLog = side === 'a' ? logA : logB;
   logPage = 0;
-  sortState = { col: null, dir: 'desc' };
-  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(currentLog);
-  document.getElementById('log-count').textContent = currentLog.length + ' games';
+  sortState  = { col: null, dir: 'desc' };
+  logFilters = { opp: '', ha: 'all' };
+  // Reset filter controls
+  var oppInput = document.getElementById('log-opp-input');
+  if (oppInput) oppInput.value = '';
+  ['all','home','away'].forEach(function(v) {
+    var btn = document.getElementById('ha-' + v);
+    if (!btn) return;
+    btn.style.background = v === 'all' ? 'var(--tp)' : 'var(--surface2)';
+    btn.style.color      = v === 'all' ? '#000'       : 'var(--muted)';
+  });
+  var filtered = getFilteredLog();
+  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(filtered);
+  document.getElementById('log-count').textContent  = filtered.length + ' games';
   var ba = document.getElementById('btn-la');
   var bb = document.getElementById('btn-lb');
   if (ba) ba.className = side === 'a' ? 'on' : '';
@@ -1767,25 +1827,13 @@ window.sortGameLog = function(col) {
     sortState.col = col;
     sortState.dir = 'desc';
   }
-  var btn = document.getElementById('btn-la');
-  var src = (!btn || btn.className === 'on') ? logA : logB;
-  currentLog = src.slice().sort(function(a, b) {
-    // For date column use date_sort (YYYY-MM-DD) not the display string
-    // which is 'OCT 22, 2024' — alphabetical sort on that is wrong.
-    var av = col === 'date' ? (a.date_sort || a.date || '') : a[col];
-    var bv = col === 'date' ? (b.date_sort || b.date || '') : b[col];
-    if (typeof av === 'number') return sortState.dir === 'asc' ? av - bv : bv - av;
-    return sortState.dir === 'asc'
-      ? String(av || '').localeCompare(String(bv || ''))
-      : String(bv || '').localeCompare(String(av || ''));
-  });
   logPage = 0;
-  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(currentLog, col, sortState.dir);
+  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(getFilteredLog(), col, sortState.dir);
 };
 
 window.goLogPage = function(page) {
   logPage = page;
-  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(currentLog, sortState.col, sortState.dir);
+  document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(getFilteredLog(), sortState.col, sortState.dir);
 };
 </script>
 </body>

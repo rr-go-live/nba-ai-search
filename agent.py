@@ -41,6 +41,13 @@ QUERY ROUTING — which tool to use
 ▸ "X career stats" / "X season-by-season" → get_career_stats
 ▸ "X playoff career stats" → get_career_stats (season_type implied in JSON output)
 
+▸ PLAYER NAME ONLY — query is just a player name with no season, no opponent,
+  no stat category, and no comparison context:
+  "LeBron James" / "Steph Curry" / "Jayson Tatum" / "Giannis"
+  → get_career_stats with season_from = player's rookie season, season_to = "2025-26"
+  → Output type: "career"
+  This is the default fallback when no other routing signal is present.
+
 ▸ COMPARE / MULTI-PLAYER (2–6 players, any era):
   "Kobe 2010 championship run vs Tatum 2024 championship run"
   "Compare LeBron, Curry, Durant, Giannis career stats"

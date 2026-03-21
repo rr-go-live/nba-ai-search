@@ -134,6 +134,23 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .chart-wrap { position: relative; height: 220px; }
 .chart-wrap.tall { height: 280px; }
 
+/* Game highlight cards (best/worst game vs opponent) */
+.game-hi-card { display: flex; flex-direction: column; justify-content: center; min-height: 220px; }
+.game-hi-meta { font-size: .65rem; color: var(--muted); letter-spacing: .06em; margin-bottom: 6px; }
+.game-hi-result { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: .6rem; font-weight: 700; letter-spacing: .08em; margin-left: 6px; }
+.game-hi-result.W { background: rgba(0,222,140,.15); color: #00de8c; }
+.game-hi-result.L { background: rgba(206,17,65,.15); color: #ff4d6d; }
+.game-hi-pts-row { display: flex; align-items: baseline; gap: 8px; margin: 6px 0 4px; }
+.game-hi-pts { font-family: 'Barlow Condensed', sans-serif; font-size: 4rem; font-weight: 900; line-height: 1; color: var(--tp); }
+.game-hi-pts-lbl { font-size: .7rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.game-hi-stats { display: flex; gap: 14px; font-size: .72rem; color: var(--text); margin: 6px 0; }
+.game-hi-stats span { white-space: nowrap; }
+.game-hi-shooting { font-size: .65rem; color: var(--muted); font-family: 'DM Mono', monospace; margin: 4px 0; display: flex; gap: 12px; flex-wrap: wrap; }
+.game-hi-pm { font-size: .72rem; font-family: 'DM Mono', monospace; margin-top: 8px; }
+.game-hi-pm.pos { color: #00de8c; }
+.game-hi-pm.neg { color: #ff4d6d; }
+.game-hi-pm.neu { color: var(--muted); }
+
 /* Log */
 .log-section { margin-bottom: 48px; }
 .log-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
@@ -543,7 +560,7 @@ function renderVsTeam(d, c) {
 
   buildStatCards('sg', avg);
   buildDonuts('donuts', avg, null);
-  if (splits.length >= 2) buildCharts('charts-area', splits, avg);
+  if (splits.length >= 2) buildCharts('charts-area', splits, avg, log, oppAbbr);
   buildGameLog('log-area', log, null);
 }
 
@@ -933,92 +950,68 @@ function buildDonuts(containerId, avgA, avgB, labelA, labelB, colA, colB) {
   });
 }
 
+// ─── Game highlight card HTML ─────────────────────────────────────────────────
+function gameHighlightHtml(title, game, fillColor) {
+  if (!game) return '<div class="chart-card game-hi-card"><div class="chart-title">' + title + '</div>'
+    + '<p style="color:var(--muted);font-size:.75rem;margin-top:16px">No data</p></div>';
+
+  var pm    = game.plus_minus || 0;
+  var pmCls = pm > 0 ? 'pos' : pm < 0 ? 'neg' : 'neu';
+  var pmStr = pm > 0 ? '+' + pm : String(pm);
+  var res   = (game.result || '').toUpperCase();
+
+  return '<div class="chart-card game-hi-card">'
+    + '<div class="chart-title">' + title + '</div>'
+    + '<div class="game-hi-meta">'
+    +   (game.date || '') + ' &nbsp;·&nbsp; ' + (game.matchup || '')
+    +   '<span class="game-hi-result ' + res + '">' + (res || '–') + '</span>'
+    + '</div>'
+    + '<div class="game-hi-pts-row">'
+    +   '<span class="game-hi-pts" style="color:' + fillColor + '">' + (game.pts || 0) + '</span>'
+    +   '<span class="game-hi-pts-lbl">PTS</span>'
+    + '</div>'
+    + '<div class="game-hi-stats">'
+    +   '<span>' + (game.reb || 0) + ' REB</span>'
+    +   '<span>' + (game.ast || 0) + ' AST</span>'
+    +   '<span>' + (game.stl || 0) + ' STL</span>'
+    +   '<span>' + (game.blk || 0) + ' BLK</span>'
+    + '</div>'
+    + '<div class="game-hi-shooting">'
+    +   '<span>' + (game.fgm || 0) + '/' + (game.fga || 0) + ' FG</span>'
+    +   '<span>' + (game.fg3m || 0) + '/' + (game.fg3a || 0) + ' 3P</span>'
+    +   '<span>' + (game.ftm || 0) + '/' + (game.fta || 0) + ' FT</span>'
+    + '</div>'
+    + '<div class="game-hi-pm ' + pmCls + '">' + pmStr + ' +/-</div>'
+    + '</div>';
+}
+
 // ─── Line/multi charts ────────────────────────────────────────────────────────
-function buildCharts(containerId, splits, avg) {
+function buildCharts(containerId, splits, avg, log, oppAbbr) {
   var container = document.getElementById(containerId);
   if (!container) return;
   var fillColor = getComputedStyle(document.documentElement).getPropertyValue('--tp').trim() || '#f7941d';
-  var labels = splits.map(function(s) { return s.season; });
 
-  container.innerHTML = '<div class="chart-card">'
-    + '<div class="chart-title">Points per game by season</div>'
-    + '<div class="chart-wrap"><canvas id="chart-pts"></canvas></div>'
-    + '</div>'
-    + '<div class="chart-card">'
-    + '<div class="chart-title">Stat profile</div>'
-    + '<div class="chart-wrap"><canvas id="chart-radar"></canvas></div>'
-    + '</div>'
+  // Season splits come backend-sorted newest-first; reverse so x-axis reads
+  // oldest → newest (left to right) on all line charts.
+  var orderedSplits = splits.slice().reverse();
+  var labels = orderedSplits.map(function(s) { return s.season; });
+
+  // Best / worst game by PTS from the full game log
+  var sortedLog = (log || []).slice().sort(function(a, b) {
+    if (b.pts !== a.pts) return b.pts - a.pts;       // desc by PTS
+    return (b.plus_minus || 0) - (a.plus_minus || 0); // tiebreak: +/-
+  });
+  var bestGame  = sortedLog[0]  || null;
+  var worstGame = sortedLog[sortedLog.length - 1] || null;
+
+  var oppLabel = oppAbbr ? ' VS ' + oppAbbr : '';
+
+  container.innerHTML = gameHighlightHtml('Best game' + oppLabel, bestGame, fillColor)
+    + gameHighlightHtml('Worst game' + oppLabel, worstGame, fillColor)
     + '<div class="chart-card full">'
-    + '<div class="chart-title">PTS / REB / AST trend</div>'
+    + '<div class="chart-title">PTS / REB / AST trend (oldest → newest)</div>'
     + '<div class="chart-wrap tall"><canvas id="chart-multi"></canvas></div>'
     + '</div>';
-
-  destroyChart('chart-pts');
-  var ctx1 = document.getElementById('chart-pts');
-  if (ctx1) {
-    charts['chart-pts'] = new Chart(ctx1.getContext('2d'), {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'PPG',
-          data: splits.map(function(s) { return s.pts || 0; }),
-          borderColor: fillColor,
-          backgroundColor: fillColor + '14',
-          borderWidth: 2.5,
-          pointRadius: 5,
-          pointBackgroundColor: fillColor,
-          fill: true,
-          tension: 0.35
-        }]
-      },
-      options: Object.assign(baseOpts(), {
-        plugins: {
-          legend: { display: false },
-          tooltip: tooltipOpts()
-        }
-      })
-    });
-  }
-
-  destroyChart('chart-radar');
-  var ctx2 = document.getElementById('chart-radar');
-  if (ctx2) {
-    var maxes = { pts: 40, reb: 20, ast: 15, stl: 4, blk: 4, fg_pct: 70, fg3_pct: 50 };
-    var rkeys = ['pts', 'reb', 'ast', 'stl', 'blk', 'fg_pct', 'fg3_pct'];
-    charts['chart-radar'] = new Chart(ctx2.getContext('2d'), {
-      type: 'radar',
-      data: {
-        labels: ['PTS', 'REB', 'AST', 'STL', 'BLK', 'FG%', '3P%'],
-        datasets: [{
-          label: 'Stats',
-          data: rkeys.map(function(k, i) {
-            return Math.min(100, ((avg[k] || 0) / maxes[rkeys[i]]) * 100);
-          }),
-          backgroundColor: fillColor + '20',
-          borderColor: fillColor,
-          borderWidth: 2,
-          pointBackgroundColor: fillColor,
-          pointRadius: 3
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          r: {
-            angleLines: { color: 'rgba(255,255,255,.06)' },
-            grid: { color: 'rgba(255,255,255,.06)' },
-            ticks: { display: false },
-            pointLabels: { color: '#6b7a94', font: { size: 10 } },
-            min: 0,
-            max: 100
-          }
-        },
-        plugins: { legend: { display: false }, tooltip: tooltipOpts() }
-      }
-    });
-  }
 
   destroyChart('chart-multi');
   var ctx3 = document.getElementById('chart-multi');
@@ -1030,17 +1023,17 @@ function buildCharts(containerId, splits, avg) {
         datasets: [
           {
             label: 'PTS',
-            data: splits.map(function(s) { return s.pts || 0; }),
+            data: orderedSplits.map(function(s) { return s.pts || 0; }),
             borderColor: fillColor, borderWidth: 2.5, pointRadius: 4, fill: false, tension: 0.35
           },
           {
             label: 'REB',
-            data: splits.map(function(s) { return s.reb || 0; }),
+            data: orderedSplits.map(function(s) { return s.reb || 0; }),
             borderColor: '#00c8ff', borderWidth: 2, pointRadius: 3, fill: false, tension: 0.35
           },
           {
             label: 'AST',
-            data: splits.map(function(s) { return s.ast || 0; }),
+            data: orderedSplits.map(function(s) { return s.ast || 0; }),
             borderColor: '#a78bfa', borderWidth: 2, pointRadius: 3, fill: false, tension: 0.35
           }
         ]

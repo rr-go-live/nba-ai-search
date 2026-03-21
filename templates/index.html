@@ -1610,8 +1610,9 @@ function renderCompare(d, c) {
     + '</div>'
     + '</div>';
 
-  // Embed player metadata for the async H2H fetch
-  html += '<script>window._compareH2HPlayers = ' + JSON.stringify(players.map(function(p, i) {
+  // Player metadata stored as a JS variable — set directly (not via innerHTML script tag,
+  // which browsers do not execute).  Must be assigned before c.innerHTML below.
+  window._compareH2HPlayers = players.map(function(p, i) {
     return {
       player_id:   p.player_id,
       name:        p.name || '',
@@ -1620,7 +1621,7 @@ function renderCompare(d, c) {
       season_type: p.season_type || 'Regular Season',
       color:       colors[i],
     };
-  })) + ';<\/script>';
+  });
 
   // ── Playoff series breakdown (only for Playoffs single-season) ───────────
   var hasSeriesData = isPlayoffs && players.some(function(p) { return (p.series||[]).length > 0; });
@@ -1731,8 +1732,8 @@ function renderCompare(d, c) {
 
     html += '</div></div>';
 
-    // Store series data globally for tab switching
-    html += '<script>window._comparePlayers = ' + JSON.stringify(players.map(function(p, i) {
+    // Set series data directly (not via innerHTML script tag — browsers don't execute those).
+    window._comparePlayers = players.map(function(p, i) {
       var series = p.series || [];
       var allGames = [];
       series.forEach(function(s) {
@@ -1744,7 +1745,7 @@ function renderCompare(d, c) {
         return (b.date_sort||b.date||'').localeCompare(a.date_sort||a.date||'');
       });
       return { label: p.label || p.name, color: colors[i], games: allGames };
-    })) + ';<\/script>';
+    });
   }
 
   c.innerHTML = html;

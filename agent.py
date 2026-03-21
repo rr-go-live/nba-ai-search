@@ -475,6 +475,8 @@ class NBAStatsAgent:
         total_output_tokens = 0
         api_call_count      = 0
 
+        logger.info(f"[DEBUG] Agent run — query: {query!r}")
+
         for iteration in range(1, MAX_AGENT_ITERS + 1):
             logger.info(f"Iteration {iteration}/{MAX_AGENT_ITERS}")
             progress_cb("thinking", f"Step {iteration}: reasoning…")
@@ -493,8 +495,11 @@ class NBAStatsAgent:
                     )
                     api_call_count += 1
                     if response.usage_metadata:
-                        total_input_tokens  += getattr(response.usage_metadata, "prompt_token_count", 0) or 0
-                        total_output_tokens += getattr(response.usage_metadata, "candidates_token_count", 0) or 0
+                        in_tok  = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+                        out_tok = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
+                        total_input_tokens  += in_tok
+                        total_output_tokens += out_tok
+                        logger.info(f"[DEBUG] iter={iteration} tokens in={in_tok} out={out_tok} total_out={total_output_tokens}")
                     break
                 except Exception as e:
                     err_str = str(e)
@@ -509,15 +514,16 @@ class NBAStatsAgent:
                             progress_cb("error", "Quota exhausted. Try again later.")
                             return {"success": False, "error": "Gemini API quota exhausted. The free tier allows 1500 requests/day. Please wait and retry."}
                     else:
-                        logger.error(f"Gemini API: {e}")
+                        logger.error(f"[DEBUG] Gemini API error (iter={iteration} attempt={attempt+1}): {type(e).__name__}: {e}")
                         progress_cb("error", err_str)
                         return {"success": False, "error": err_str}
 
             if response is None or not response.candidates:
-                logger.error("Gemini returned no candidates")
+                logger.error("[DEBUG] Gemini returned no candidates — breaking loop")
                 break
 
             candidate = response.candidates[0]
+            finish_reason = getattr(candidate, "finish_reason", None)
             parts = candidate.content.parts if candidate.content else []
 
             # Filter out thought parts (Gemini 2.5 Flash is a thinking model;
@@ -525,14 +531,29 @@ class NBAStatsAgent:
             text_parts = [p for p in parts if p.text and not getattr(p, "thought", False)]
             fn_parts   = [p for p in parts if p.function_call]
 
+            logger.info(
+                f"[DEBUG] iter={iteration} finish_reason={finish_reason} "
+                f"text_parts={len(text_parts)} fn_parts={len(fn_parts)} "
+                f"total_parts={len(parts)}"
+            )
+
+            # Warn loudly if the model was cut off by the token limit
+            if finish_reason is not None and str(finish_reason) in ("MAX_TOKENS", "2"):
+                logger.warning(
+                    f"[DEBUG] *** MAX_TOKENS hit at iter={iteration} — "
+                    f"output TRUNCATED. Increase AGENT_MAX_TOKENS (currently {AGENT_MAX_TOKENS}). ***"
+                )
+
             if text_parts:
                 last_text = " ".join(p.text for p in text_parts)
+                logger.info(f"[DEBUG] iter={iteration} last_text length={len(last_text)} has_json_block={'```json' in last_text}")
                 excerpt   = last_text[:280].replace("\n", " ")
                 if "```json" not in last_text[:50]:
                     progress_cb("message", excerpt)
 
             # No function calls → model is done
             if not fn_parts:
+                logger.info(f"[DEBUG] iter={iteration} — no fn_parts, model finished")
                 break
 
             # Append model's full response (text + function calls) to history
@@ -544,12 +565,25 @@ class NBAStatsAgent:
                 fn      = part.function_call
                 fn_args = dict(fn.args)
 
+                logger.info(f"[DEBUG] calling tool={fn.name} args_keys={list(fn_args.keys())}")
+                if fn.name == "get_multi_player_stats":
+                    players_cfg = fn_args.get("players", [])
+                    logger.info(f"[DEBUG] get_multi_player_stats: {len(players_cfg)} players: "
+                                + str([{"pid": p.get("player_id"), "from": p.get("season_from"), "to": p.get("season_to")} for p in players_cfg]))
+
                 progress_cb("tool_start", _describe_tool(fn.name, fn_args))
                 try:
                     result = execute_tool(fn.name, fn_args)
+                    # Log tool errors (the tool returned {"error": ...})
+                    if isinstance(result, dict) and "error" in result:
+                        logger.error(f"[DEBUG] tool={fn.name} returned error: {result['error']}")
+                    else:
+                        logger.info(f"[DEBUG] tool={fn.name} success — top-level keys: {list(result.keys()) if isinstance(result, dict) else type(result).__name__}")
                     progress_cb("tool_result", _summarise(fn.name, result))
                 except Exception as e:
-                    logger.error(f"Tool {fn.name}: {e}")
+                    import traceback
+                    logger.error(f"[DEBUG] tool={fn.name} EXCEPTION: {type(e).__name__}: {e}")
+                    logger.error(f"[DEBUG] traceback:\n{traceback.format_exc()}")
                     result = {"error": str(e)}
                     progress_cb("tool_result", f"⚠️ {fn.name}: {e}")
 
@@ -574,10 +608,17 @@ class NBAStatsAgent:
                 types.Content(role="user", parts=fn_response_parts)
             )
 
+        logger.info(f"[DEBUG] Loop ended — last_text length={len(last_text)} iters_used={iteration}")
         result_data = _extract_json(last_text)
         narrative   = _extract_narrative(last_text)
 
+        if not result_data:
+            logger.error(f"[DEBUG] _extract_json returned empty — success will be False")
+            logger.error(f"[DEBUG] last_text[:800]:\n{last_text[:800]}")
+            logger.error(f"[DEBUG] last_text[-400:]:\n{last_text[-400:]}")
+
         if result_data:
+            logger.info(f"[DEBUG] result_data type={result_data.get('type')} keys={list(result_data.keys())}")
             result_data = _merge_raw_logs(result_data, raw_tool_cache)
 
         return {
@@ -750,10 +791,21 @@ def _extract_json(text: str) -> dict:
     import re
     m = re.search(r"```json\s*([\s\S]*?)```", text)
     if m:
+        raw = m.group(1).strip()
         try:
-            return json.loads(m.group(1).strip())
+            return json.loads(raw)
         except json.JSONDecodeError as e:
-            logger.error(f"JSON parse: {e}")
+            logger.error(f"[DEBUG] JSON parse error: {e}")
+            # Show the area around the parse error (col number from exception)
+            char = getattr(e, "pos", 0)
+            snippet = raw[max(0, char - 80): char + 80]
+            logger.error(f"[DEBUG] JSON error near char {char}: ...{snippet!r}...")
+            logger.error(f"[DEBUG] Full JSON block length={len(raw)} first300={raw[:300]!r}")
+    else:
+        logger.error(f"[DEBUG] No ```json block found in model output (text length={len(text)})")
+        if text:
+            logger.error(f"[DEBUG] Output head: {text[:300]!r}")
+            logger.error(f"[DEBUG] Output tail: {text[-300:]!r}")
     return {}
 
 

@@ -617,6 +617,7 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
 
     vs_team_results = []
     cond_results    = []
+    career_results  = []
 
     for entry in cache.values():
         name = entry.get("name", "")
@@ -625,11 +626,20 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
             vs_team_results.append(raw)
         elif name == "get_conditional_stats":
             cond_results.append(raw)
+        elif name == "get_career_stats":
+            career_results.append(raw)
+
+    # NOTE: For ALL types that contain percentage averages we override from the
+    # raw tool cache.  Gemini re-formats the backend's 0–100 scale values (e.g.
+    # fg_pct=47.2) as 0–1 decimals (e.g. 0.472) in its JSON output, which
+    # causes donut charts and stat cards to display 0.5% instead of 47.2%.
+    # Overriding from the cache bypasses the model's reformatting entirely.
 
     if result_type == "vs_team" and vs_team_results:
         raw = vs_team_results[-1]
-        if "game_log" in raw:
-            result["game_log"] = raw["game_log"]
+        if "game_log" in raw:  result["game_log"] = raw["game_log"]
+        # Override averages so fg_pct etc. stay on the 0–100 scale
+        if "averages" in raw:  result["averages"] = raw["averages"]
 
     elif result_type == "conditional" and cond_results:
         raw = cond_results[-1]
@@ -637,22 +647,36 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
         if "comparison_log"      in raw: result["comparison_log"]      = raw["comparison_log"]
         if "primary_games"       in raw: result["primary_games"]       = raw["primary_games"]
         if "comparison_games"    in raw: result["comparison_games"]    = raw["comparison_games"]
-        # Always override averages from the tool result — the model re-formats
-        # fg_pct/fg3_pct/ft_pct as 0–1 decimals (e.g. 0.472) instead of the
-        # 0–100 values that _build_averages returns (e.g. 47.2), causing the
-        # split cards and donut charts to display 0.5% instead of 47.2%.
         if "primary_averages"    in raw: result["primary_averages"]    = raw["primary_averages"]
         if "comparison_averages" in raw: result["comparison_averages"] = raw["comparison_averages"]
 
+    elif result_type == "career" and career_results:
+        raw = career_results[-1]
+        # Override season rows — model may reformat fg_pct values in these too
+        if "seasons"         in raw: result["seasons"]         = raw["seasons"]
+        if "playoff_seasons" in raw: result["playoff_seasons"] = raw["playoff_seasons"]
+        # Override career/playoff totals — these drive the donut charts
+        if "career_totals"   in raw: result["career_totals"]   = raw["career_totals"]
+        if "playoff_totals"  in raw: result["playoff_totals"]  = raw["playoff_totals"]
+
     elif result_type == "h2h" and len(cond_results) >= 2:
-        result["player_log"]     = cond_results[0].get("primary_log",   result.get("player_log",   []))
-        result["opponent_log"]   = cond_results[1].get("primary_log",   result.get("opponent_log", []))
-        result["player_games"]   = cond_results[0].get("primary_games",   result.get("player_games",   0))
-        result["opponent_games"] = cond_results[1].get("primary_games",   result.get("opponent_games", 0))
+        result["player_log"]     = cond_results[0].get("primary_log",    result.get("player_log",   []))
+        result["opponent_log"]   = cond_results[1].get("primary_log",    result.get("opponent_log", []))
+        result["player_games"]   = cond_results[0].get("primary_games",  result.get("player_games",   0))
+        result["opponent_games"] = cond_results[1].get("primary_games",  result.get("opponent_games", 0))
+        # Override averages to preserve the 0–100 percentage scale
+        if "primary_averages" in cond_results[0]:
+            result["player_averages"]   = cond_results[0]["primary_averages"]
+        if "primary_averages" in cond_results[1]:
+            result["opponent_averages"] = cond_results[1]["primary_averages"]
 
     elif result_type == "h2h" and len(cond_results) == 1:
         result["player_log"]   = cond_results[0].get("primary_log",    result.get("player_log",   []))
         result["opponent_log"] = cond_results[0].get("comparison_log", result.get("opponent_log", []))
+        if "primary_averages"    in cond_results[0]:
+            result["player_averages"]   = cond_results[0]["primary_averages"]
+        if "comparison_averages" in cond_results[0]:
+            result["opponent_averages"] = cond_results[0]["comparison_averages"]
 
     return result
 

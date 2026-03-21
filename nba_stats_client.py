@@ -398,8 +398,7 @@ def _to_row(r: dict) -> dict:
 def _career_row(r: dict, is_playoffs: bool = False) -> dict:
     """
     Convert a career-stats row dict to frontend-safe format.
-    Includes fg3a (three-point attempt volume per game) so the insight layer
-    can distinguish high-efficiency/low-volume from truly elite shooting.
+    Includes fg3a/fga/fta (attempt volumes per game) for donut hover context.
     team fallback: 'TOT' means player was traded that season.
     """
     team = str(r.get("TEAM_ABBREVIATION") or "")
@@ -413,11 +412,13 @@ def _career_row(r: dict, is_playoffs: bool = False) -> dict:
         "reb":      round(_safe_float(r.get("REB")), 1),
         "ast":      round(_safe_float(r.get("AST")), 1),
         "stl":      round(_safe_float(r.get("STL")), 1),
-        "blk":      round(_safe_float(r.get("BLK")), 1),      # NOT * 100
+        "blk":      round(_safe_float(r.get("BLK")), 1),
         "fg_pct":   round(_safe_float(r.get("FG_PCT"))  * 100, 1),
+        "fga":      round(_safe_float(r.get("FGA")), 1),      # attempts/game for donut hover
         "fg3_pct":  round(_safe_float(r.get("FG3_PCT")) * 100, 1),
         "fg3a":     round(_safe_float(r.get("FG3A")), 1),     # volume context
         "ft_pct":   round(_safe_float(r.get("FT_PCT"))  * 100, 1),
+        "fta":      round(_safe_float(r.get("FTA")), 1),      # attempts/game for donut hover
         "playoffs": is_playoffs,
     }
 
@@ -467,49 +468,97 @@ def get_player_vs_team_stats(
     }
 
 
-def get_player_career_stats(player_id: int) -> dict:
+def get_player_career_stats(
+    player_id: int,
+    season_from: str = None,
+    season_to:   str = None,
+) -> dict:
     """
     Career season-by-season averages + career totals.
 
+    When season_from / season_to are provided the returned seasons and totals
+    are restricted to that range — ideal for queries like "Tatum stats 2022-25".
+    Without filters the full career is returned and the NBA API's pre-computed
+    career totals are used (most accurate for all-time queries).
+
     Returns both regular season and playoff data.
-    Each season row includes fg3a (three-point attempts) for volume context.
-    team='TOT' means the player was traded that season (prevents undefined display).
+    Each season row includes fga/fg3a/fta (attempt volumes) for donut hover.
+    team='TOT' means the player was traded that season.
     """
+    def _season_year(s: str) -> int:
+        try:
+            return int(str(s).split("-")[0])
+        except Exception:
+            return 0
+
     data = _career_stats_raw(player_id)
 
-    regular_seasons = [
-        _career_row(r, is_playoffs=False)
-        for r in data.get("SeasonTotalsRegularSeason", [])
-    ]
-    playoff_seasons = [
-        _career_row(r, is_playoffs=True)
-        for r in data.get("SeasonTotalsPostSeason", [])
-    ]
+    # ── Filter raw rows to the requested season range ─────────────────────────
+    has_range = bool(season_from and season_to)
+    y0 = _season_year(season_from) if season_from else 0
+    y1 = _season_year(season_to)   if season_to   else 9999
 
-    def _totals(key: str) -> dict:
-        rows = data.get(key, [])
+    def _filter(rows):
+        if not has_range:
+            return rows
+        return [r for r in rows if y0 <= _season_year(r.get("SEASON_ID", "")) <= y1]
+
+    reg_raw  = _filter(data.get("SeasonTotalsRegularSeason", []))
+    post_raw = _filter(data.get("SeasonTotalsPostSeason",    []))
+
+    regular_seasons = [_career_row(r, is_playoffs=False) for r in reg_raw]
+    playoff_seasons = [_career_row(r, is_playoffs=True)  for r in post_raw]
+
+    # ── Totals: GP-weighted averages from raw rows ────────────────────────────
+    # For full-career queries we could use the API's CareerTotals row, but we
+    # always compute from raw rows so the per-game averages are consistent with
+    # the per-season rows shown in the table, and fga/fta are always present.
+    def _totals_from_raw(rows: list) -> dict:
         if not rows:
             return {}
-        r = rows[-1]
+        total_gp = sum(_safe_int(r.get("GP")) for r in rows)
+        if total_gp == 0:
+            return {}
+
+        def wp(key):     # weighted per-game
+            return round(
+                sum(_safe_float(r.get(key)) * _safe_int(r.get("GP")) for r in rows)
+                / total_gp, 1
+            )
+        def wpct(key):   # weighted pct (NBA API stores as 0-1; multiply to 0-100)
+            return round(
+                sum(_safe_float(r.get(key)) * _safe_int(r.get("GP")) for r in rows)
+                / total_gp * 100, 1
+            )
+
         return {
-            "gp":      _safe_int(r.get("GP")),
-            "pts":     round(_safe_float(r.get("PTS")), 1),
-            "reb":     round(_safe_float(r.get("REB")), 1),
-            "ast":     round(_safe_float(r.get("AST")), 1),
-            "stl":     round(_safe_float(r.get("STL")), 1),
-            "blk":     round(_safe_float(r.get("BLK")), 1),
-            "fg_pct":  round(_safe_float(r.get("FG_PCT"))  * 100, 1),
-            "fg3_pct": round(_safe_float(r.get("FG3_PCT")) * 100, 1),
-            "fg3a":    round(_safe_float(r.get("FG3A")), 1),
-            "ft_pct":  round(_safe_float(r.get("FT_PCT"))  * 100, 1),
+            "gp":      total_gp,
+            "pts":     wp("PTS"),
+            "reb":     wp("REB"),
+            "ast":     wp("AST"),
+            "stl":     wp("STL"),
+            "blk":     wp("BLK"),
+            "fg_pct":  wpct("FG_PCT"),
+            "fga":     wp("FGA"),      # attempts/game — drives donut hover
+            "fg3_pct": wpct("FG3_PCT"),
+            "fg3a":    wp("FG3A"),
+            "ft_pct":  wpct("FT_PCT"),
+            "fta":     wp("FTA"),      # attempts/game — drives donut hover
         }
 
-    return {
+    result = {
         "seasons":         regular_seasons,
         "playoff_seasons": playoff_seasons,
-        "career_totals":   _totals("CareerTotalsRegularSeason"),
-        "playoff_totals":  _totals("CareerTotalsPostSeason"),
+        "career_totals":   _totals_from_raw(reg_raw),
+        "playoff_totals":  _totals_from_raw(post_raw),
     }
+    # Pass the range back so the frontend can display it correctly
+    if season_from:
+        result["season_from"] = season_from
+    if season_to:
+        result["season_to"] = season_to
+
+    return result
 
 
 def get_player_conditional_stats(

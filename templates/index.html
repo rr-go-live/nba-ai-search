@@ -684,20 +684,49 @@ function renderH2H(d, c) {
 
 // ─── career ──────────────────────────────────────────────────────────────────
 function renderCareer(d, c) {
-  var seasons = d.seasons || [];
-  var tot     = d.career_totals || {};
-  var psn     = d.playoff_seasons || [];
+  var allSeasons = d.seasons || [];
+  var allPsn     = d.playoff_seasons || [];
+
+  // ── Safety-net season filter ─────────────────────────────────────────────
+  // The backend filters when season_from/season_to are passed to get_career_stats.
+  // We also filter here in case the model set these fields in the JSON but didn't
+  // pass them as tool params (or as an extra guard against stale cached data).
+  function snYear(s) { return parseInt((s || '').split('-')[0]) || 0; }
+  var y0 = d.season_from ? snYear(d.season_from) : 0;
+  var y1 = d.season_to   ? snYear(d.season_to)   : 9999;
+  var hasRange = y0 > 0 || y1 < 9999;
+
+  var seasons = hasRange
+    ? allSeasons.filter(function(s) {
+        var y = snYear(s.season); return y >= y0 && y <= y1;
+      })
+    : allSeasons;
+  var psn = hasRange
+    ? allPsn.filter(function(s) {
+        var y = snYear(s.season); return y >= y0 && y <= y1;
+      })
+    : allPsn;
+
+  // Use career_totals from JSON (already filtered by backend).
+  // If frontend filtered further than backend did, recompute from filtered seasons.
+  var tot = d.career_totals || {};
+  if (hasRange && seasons.length > 0 && seasons.length < allSeasons.length) {
+    tot = computeTotalsFromSeasons(seasons) || tot;
+  }
 
   var multiSeason = seasons.length > 1;
+  var gpLabel     = hasRange
+    ? (d.season_from + ' – ' + (d.season_to || ''))
+    : 'Career';
+  var gpMeta = '<div class="meta-tag">' + gpLabel + ' GP <span>' + (tot.gp || '') + '</span></div>';
 
-  c.innerHTML = playerHeaderHtml(d.player, null, [
-    '<div class="meta-tag">Career GP <span>' + (tot.gp || '') + '</span></div>'
-  ])
+  c.innerHTML = playerHeaderHtml(d.player, null, [gpMeta])
   + insightHtml(d.insight)
   + '<div class="stat-grid" id="sg"></div>'
   + '<div class="donuts-row" id="donuts"></div>'
   + (multiSeason
-      ? '<div class="charts-row"><div class="chart-card full"><div class="chart-title">PPG / RPG / APG by season</div>'
+      ? '<div class="charts-row"><div class="chart-card full">'
+        + '<div class="chart-title">PPG / RPG / APG — ' + gpLabel + '</div>'
         + '<div class="chart-wrap tall"><canvas id="chart-career"></canvas></div></div></div>'
       : '')
   + '<div id="log-area"></div>';
@@ -706,6 +735,28 @@ function renderCareer(d, c) {
   buildDonuts('donuts', tot, null);
   if (multiSeason) buildCareerChart('chart-career', seasons, d.player);
   buildCareerTable('log-area', seasons, psn);
+}
+
+// GP-weighted averages computed client-side from season rows.
+// Used as a safety net when the frontend filtered seasons beyond what the backend returned.
+function computeTotalsFromSeasons(rows) {
+  if (!rows || !rows.length) return {};
+  var totalGP = rows.reduce(function(s, r) { return s + (r.gp || 0); }, 0);
+  if (!totalGP) return {};
+  function wp(key) {
+    return Math.round(
+      rows.reduce(function(s, r) { return s + (r[key] || 0) * (r.gp || 0); }, 0)
+      / totalGP * 10
+    ) / 10;
+  }
+  return {
+    gp:      totalGP,
+    pts:     wp('pts'),  reb:     wp('reb'),  ast:    wp('ast'),
+    stl:     wp('stl'),  blk:     wp('blk'),
+    fg_pct:  wp('fg_pct'),  fga:  wp('fga'),
+    fg3_pct: wp('fg3_pct'), fg3a: wp('fg3a'),
+    ft_pct:  wp('ft_pct'),  fta:  wp('fta'),
+  };
 }
 
 // ─── Stat cards ──────────────────────────────────────────────────────────────

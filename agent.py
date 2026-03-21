@@ -38,13 +38,28 @@ QUERY ROUTING — which tool to use
 ═══════════════════════════════════════════════════════
 
 ▸ "X stats vs [team] since YYYY" → get_stats_vs_team
-▸ "X career stats" / "X season-by-season" → get_career_stats
+▸ "X career stats" / "X season-by-season" → get_career_stats (no filters)
 ▸ "X playoff career stats" → get_career_stats (season_type implied in JSON output)
+
+▸ SEASON RANGE — query specifies a year span for a single player:
+  "Tatum stats between 2022 and 2025" / "Curry since 2021" /
+  "Bridges stats while in Brooklyn" / "LeBron last 3 seasons"
+  → get_career_stats with season_from AND season_to
+  CRITICAL: pass season_from + season_to to the tool so seasons AND totals
+  are filtered correctly. Do NOT use get_career_stats without these params and
+  then manually filter — the tool does the filtering for you.
+  RANGE TRANSLATION EXAMPLES:
+    "between 2022 and 2025"  → season_from="2022-23", season_to="2024-25"
+    "from 2020 to 2023"      → season_from="2019-20", season_to="2022-23"
+    "since 2021"             → season_from="2020-21", season_to="2025-26"
+    "last 3 seasons"         → season_from="2023-24", season_to="2025-26"
+    "while in Brooklyn"      → infer BKN era, e.g. season_from="2020-21", season_to="2021-22"
+  → Output type: "career" with season_range in the JSON
 
 ▸ PLAYER NAME ONLY — query is just a player name with no season, no opponent,
   no stat category, and no comparison context:
   "LeBron James" / "Steph Curry" / "Jayson Tatum" / "Giannis"
-  → get_career_stats with season_from = player's rookie season, season_to = "2025-26"
+  → get_career_stats (no season_from/season_to → full career)
   → Output type: "career"
   This is the default fallback when no other routing signal is present.
 

@@ -125,14 +125,20 @@ TOOL_DEFINITIONS = [
     {
         "name": "get_career_stats",
         "description": (
-            "Full career stats: season-by-season regular season + playoff averages.\n"
-            "Each season row includes fg3a (three-point attempts per game) for volume context.\n"
-            "Use for: 'Tatum career stats', 'Curry season-by-season', 'LeBron playoff career'."
+            "Season-by-season regular season + playoff averages for a player.\n"
+            "Each season row includes fga/fg3a/fta (attempts per game) for donut hover.\n"
+            "Pass season_from + season_to to restrict to a specific range "
+            "(e.g. 'Tatum stats 2022-2025' → season_from='2022-23', season_to='2024-25').\n"
+            "Omit both for full career. "
+            "Use for: 'Tatum career stats', 'Curry season-by-season', "
+            "'Tatum 2022 to 2025', 'LeBron last 3 seasons'."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "player_id":   {"type": "integer", "description": "NBA player ID"},
+                "season_from": {"type": "string",  "description": "First season of range e.g. '2022-23'. Omit for full career."},
+                "season_to":   {"type": "string",  "description": "Last season of range e.g. '2024-25'. Omit for full career."},
                 "season_type": {"type": "string",  "description": "'Regular Season' (default) or 'Playoffs'"},
             },
             "required": ["player_id"],
@@ -265,7 +271,11 @@ def execute_tool(tool_name: str, tool_input: dict) -> dict:
         )
 
     elif tool_name == "get_career_stats":
-        return nba.get_player_career_stats(tool_input["player_id"])
+        return nba.get_player_career_stats(
+            tool_input["player_id"],
+            season_from = tool_input.get("season_from"),
+            season_to   = tool_input.get("season_to"),
+        )
 
     elif tool_name == "get_multi_player_stats":
         # Fill in default season_to if omitted per player config

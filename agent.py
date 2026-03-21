@@ -37,38 +37,20 @@ Answer natural-language NBA stat queries with precision, nuance, and real data.
 QUERY ROUTING — which tool to use
 ═══════════════════════════════════════════════════════
 
-▸ "X stats vs [team] since YYYY" → get_stats_vs_team
-▸ "X career stats" / "X season-by-season" → get_career_stats (no filters)
-▸ "X playoff career stats" → get_career_stats (season_type implied in JSON output)
-
-▸ SEASON RANGE — query specifies a year span for a single player:
-  "Tatum stats between 2022 and 2025" / "Curry since 2021" /
-  "Bridges stats while in Brooklyn" / "LeBron last 3 seasons"
-  → get_career_stats with season_from AND season_to
-  CRITICAL: pass season_from + season_to to the tool so seasons AND totals
-  are filtered correctly. Do NOT use get_career_stats without these params and
-  then manually filter — the tool does the filtering for you.
-  RANGE TRANSLATION EXAMPLES:
-    "between 2022 and 2025"  → season_from="2022-23", season_to="2024-25"
-    "from 2020 to 2023"      → season_from="2019-20", season_to="2022-23"
-    "since 2021"             → season_from="2020-21", season_to="2025-26"
-    "last 3 seasons"         → season_from="2023-24", season_to="2025-26"
-    "while in Brooklyn"      → infer BKN era, e.g. season_from="2020-21", season_to="2021-22"
-  → Output type: "career" with season_range in the JSON
-
-▸ PLAYER NAME ONLY — query is just a player name with no season, no opponent,
-  no stat category, and no comparison context:
-  "LeBron James" / "Steph Curry" / "Jayson Tatum" / "Giannis"
-  → get_career_stats (no season_from/season_to → full career)
-  → Output type: "career"
-  This is the default fallback when no other routing signal is present.
+CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
+  If the query names 2 or more players OR uses the word "compare" / "vs" /
+  "versus" in a side-by-side context → jump straight to COMPARE or H2H.
+  NEVER apply single-player career / season-range / player-name-only routing
+  to a query that involves multiple players.
 
 ▸ COMPARE / MULTI-PLAYER (2–6 players, any era):
   "Kobe 2010 championship run vs Tatum 2024 championship run"
   "Compare LeBron, Curry, Durant, Giannis career stats"
   "Jordan prime years vs LeBron prime years"
-  → get_multi_player_stats with one config per player
+  → ALWAYS use get_multi_player_stats — one config per player
   → Output type: "compare"
+  DO NOT call get_career_stats for each player separately; one
+  get_multi_player_stats call handles all of them efficiently.
   HISTORICAL CHAMPIONSHIP RUNS (playoffs):
     Kobe 2010    → season_from="2009-10", season_to="2009-10", season_type="Playoffs"
     Kobe 2009    → season_from="2008-09", season_to="2008-09", season_type="Playoffs"
@@ -86,6 +68,28 @@ QUERY ROUTING — which tool to use
     Giannis 2021 → season_from="2020-21", season_to="2020-21", season_type="Playoffs"
   For multi-season "prime years", use the peak 3–4 season range.
   label should be human-readable: "Kobe 2010 Finals", "Tatum 2024 Run", etc.
+
+▸ "X stats vs [team] since YYYY" → get_stats_vs_team
+▸ "X career stats" / "X season-by-season" → get_career_stats (no filters)
+▸ "X playoff career stats" → get_career_stats
+
+▸ SEASON RANGE — single player, specific year span:
+  "Tatum stats between 2022 and 2025" / "Curry since 2021" /
+  "Bridges stats while in Brooklyn" / "LeBron last 3 seasons"
+  → get_career_stats with season_from AND season_to
+  RANGE TRANSLATION EXAMPLES:
+    "between 2022 and 2025"  → season_from="2022-23", season_to="2024-25"
+    "from 2020 to 2023"      → season_from="2019-20", season_to="2022-23"
+    "since 2021"             → season_from="2020-21", season_to="2025-26"
+    "last 3 seasons"         → season_from="2023-24", season_to="2025-26"
+    "while in Brooklyn"      → infer BKN era, e.g. season_from="2020-21", season_to="2021-22"
+  → Output type: "career"
+
+▸ PLAYER NAME ONLY — single player, no other context:
+  "LeBron James" / "Steph Curry" / "Jayson Tatum" / "Giannis"
+  → get_career_stats (no filters → full career)
+  → Output type: "career"
+  This is the default fallback when no other routing signal is present.
 
 ▸ LEADERBOARD (stat leaders, top N players):
   "Who are the top scorers this season?"
@@ -620,6 +624,9 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
                     raw = raw_players[i]
                     if raw.get("series"):
                         rp["series"] = raw["series"]
+                    # Always override averages — model reformats 50.8 → 0.508
+                    if raw.get("averages"):
+                        rp["averages"] = raw["averages"]
                     if not rp.get("season_type") and raw.get("season_type"):
                         rp["season_type"] = raw["season_type"]
                     if not rp.get("season_from") and raw.get("season_from"):

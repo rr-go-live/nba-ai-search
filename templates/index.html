@@ -719,10 +719,10 @@ function buildStatCards(elId, avg) {
 function buildStatCardsCareer(elId, tot) {
   var el = document.getElementById(elId);
   if (!el) return;
+  // Percentages are covered by the donut charts below — keep boxes to counting stats only
   var keys = [
     ['PPG','pts',true], ['RPG','reb',false], ['APG','ast',false],
-    ['SPG','stl',false], ['BPG','blk',false],
-    ['FG%','fg_pct',false], ['3P%','fg3_pct',false], ['FT%','ft_pct',false]
+    ['SPG','stl',false], ['BPG','blk',false]
   ];
   var html = '';
   keys.forEach(function(k, i) {
@@ -757,15 +757,17 @@ function buildDonuts(containerId, avgA, avgB, labelA, labelB, colA, colB) {
     html += '<div class="donut-card" style="position:relative">'
       + '<div class="donut-lbl">' + dn.lbl + '</div>'
       + '<div class="donut-canvas-wrap"><canvas id="' + dn.id + '"></canvas></div>'
-      // Single-player: no static text; comparison: keep val + sub labels
-      + (isComp
-          ? '<div class="donut-val" id="' + dn.id + '-v">0%</div>'
-            + '<div class="donut-sub" id="' + dn.id + '-s">0%</div>'
-          : '<div id="' + dn.id + '-tip" style="'
+      // Static % always shown below arc; comparison also gets the secondary sub label
+      + '<div class="donut-val" id="' + dn.id + '-v">0%</div>'
+      + (isComp ? '<div class="donut-sub" id="' + dn.id + '-s">0%</div>' : '')
+      // Hover tooltip for attempts (single-player only)
+      + (!isComp
+          ? '<div id="' + dn.id + '-tip" style="'
               + 'display:none;position:absolute;bottom:10px;left:50%;transform:translateX(-50%);'
               + 'background:#0e1520;border:1px solid rgba(255,255,255,.1);border-radius:6px;'
               + 'padding:5px 10px;font-size:.72rem;white-space:nowrap;pointer-events:none;'
-              + 'font-family:\'DM Mono\',monospace;letter-spacing:.04em;z-index:10"></div>')
+              + 'font-family:\'DM Mono\',monospace;letter-spacing:.04em;z-index:10"></div>'
+          : '')
       + '</div>';
   });
   container.innerHTML = html;
@@ -838,17 +840,19 @@ function buildDonuts(containerId, avgA, avgB, labelA, labelB, colA, colB) {
         }
       });
 
-      // Hover tooltip: show percentage + volume on mouse-enter, hide on mouse-leave
-      (function(dnId, dnVolKey, dnVolLbl, pct, col) {
+      // Static % below arc
+      var valEl = document.getElementById(dn.id + '-v');
+      if (valEl) { valEl.textContent = fmtPct(vA); valEl.style.color = fillColor; }
+
+      // Hover tooltip: attempts/volume only (% is already shown below the arc)
+      (function(dnId, dnVolKey, dnVolLbl, col) {
         var tipEl  = document.getElementById(dnId + '-tip');
         var canvas = document.getElementById(dnId);
         if (!tipEl || !canvas) return;
         var volVal = avgA[dnVolKey] !== undefined ? parseFloat(avgA[dnVolKey]) : null;
-        var tipContent = '<span style="color:' + col + ';font-weight:700">' + fmtPct(pct) + '</span>'
-          + (volVal !== null
-              ? ' &nbsp;<span style="color:rgba(255,255,255,.45)">'
-                + fmt(volVal) + ' ' + dnVolLbl + '</span>'
-              : '');
+        if (volVal === null) return;
+        var tipContent = '<span style="color:' + col + ';font-weight:700">'
+          + fmt(volVal) + ' ' + dnVolLbl + '</span>';
         canvas.addEventListener('mouseenter', function() {
           tipEl.innerHTML = tipContent;
           tipEl.style.display = 'block';
@@ -856,7 +860,7 @@ function buildDonuts(containerId, avgA, avgB, labelA, labelB, colA, colB) {
         canvas.addEventListener('mouseleave', function() {
           tipEl.style.display = 'none';
         });
-      })(dn.id, dn.volKey, dn.volLbl, vA, fillColor);
+      })(dn.id, dn.volKey, dn.volLbl, fillColor);
     }
   });
 }

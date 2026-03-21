@@ -1308,32 +1308,23 @@ function renderCompare(d, c) {
       +       seriesCount + ' series</div>' : '')
       +   '</div>'
       + '</div>'
-      // Big PTS — show totals for playoff comparisons, per-game otherwise
-      + (function() {
-          var gp = avg.gp || 0;
-          var bigNum   = isPlayoffs ? String(Math.round((avg.pts||0) * gp)) : fmt(avg.pts);
-          var bigLabel = isPlayoffs ? 'Points' : 'Points Per Game';
-          var chipMap  = isPlayoffs
-            ? {reb:'REB', ast:'AST', stl:'STL', blk:'BLK'}
-            : {reb:'RPG', ast:'APG', stl:'SPG', blk:'BPG'};
-          return '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:3.6rem;font-weight:900;'
-            +   'line-height:1;color:' + col + '">' + bigNum + '</div>'
-            + '<div style="font-size:.58rem;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;'
-            +   'margin-bottom:14px">' + bigLabel + '</div>'
-            // Stat chips
-            + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">'
-            + ['reb','ast','stl','blk'].map(function(k) {
-                var chipVal = isPlayoffs ? String(Math.round((avg[k]||0) * gp)) : fmt(avg[k]);
-                return '<div style="background:var(--surface2);border-radius:6px;padding:8px 6px;text-align:center">'
-                  + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;font-weight:700">'
-                  + chipVal + '</div>'
-                  + '<div style="font-size:.52rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">'
-                  + (chipMap[k]||k) + '</div>'
-                  + '</div>';
-              }).join('')
+      // Big PPG — cards always show per-game averages (table below shows totals)
+      + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:3.6rem;font-weight:900;'
+      +   'line-height:1;color:' + col + '">' + fmt(avg.pts) + '</div>'
+      + '<div style="font-size:.58rem;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;'
+      +   'margin-bottom:14px">Points Per Game</div>'
+      // Stat chips — always per-game
+      + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">'
+      + ['reb','ast','stl','blk'].map(function(k) {
+          var chipLabel = {reb:'RPG', ast:'APG', stl:'SPG', blk:'BPG'}[k] || k;
+          return '<div style="background:var(--surface2);border-radius:6px;padding:8px 6px;text-align:center">'
+            + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;font-weight:700">'
+            + fmt(avg[k]) + '</div>'
+            + '<div style="font-size:.52rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">'
+            + chipLabel + '</div>'
             + '</div>';
-        })()
-      + ''
+        }).join('')
+      + '</div>'
       // FG% / 3P% / FT% row
       + '<div style="display:flex;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">'
       + ['fg_pct','fg3_pct','ft_pct'].map(function(k) {

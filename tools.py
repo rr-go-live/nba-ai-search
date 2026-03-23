@@ -166,11 +166,12 @@ TOOL_DEFINITIONS = [
                     "items": {
                         "type": "object",
                         "properties": {
-                            "player_id":   {"type": "integer", "description": "NBA player ID — must be a plain integer"},
-                            "season_from": {"type": "string",  "description": "Start season e.g. '2003-04'"},
-                            "season_to":   {"type": "string",  "description": "End season e.g. '2025-26'"},
-                            "season_type": {"type": "string",  "description": "'Regular Season' or 'Playoffs'"},
-                            "label":       {"type": "string",  "description": "Display label e.g. 'LeBron Career'"},
+                            "player_id":    {"type": "integer", "description": "NBA player ID — must be a plain integer"},
+                            "season_from":  {"type": "string",  "description": "Start season e.g. '2003-04'"},
+                            "season_to":    {"type": "string",  "description": "End season e.g. '2025-26'"},
+                            "season_type":  {"type": "string",  "description": "'Regular Season' or 'Playoffs'"},
+                            "label":        {"type": "string",  "description": "Display label e.g. 'LeBron Career'"},
+                            "series_round": {"type": "string",  "description": "Filter to a specific playoff round: 'finals', 'cf', 'r1', 'r2'. Only valid when season_type='Playoffs' and a single season is requested."},
                         },
                         # No nested required — Gemini rejects calls with required inside items.
                         # The description above and system prompt enforce the fields instead.

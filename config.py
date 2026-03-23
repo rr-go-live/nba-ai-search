@@ -44,7 +44,7 @@ for _y in range(MIN_YEAR, MAX_YEAR + 1):
 # Swap to gemini-2.0-flash for 1500 req/day free (deprecated EOL June 2026).
 GEMINI_MODEL     = "gemini-2.5-flash"
 MAX_AGENT_ITERS  = 12
-AGENT_MAX_TOKENS = 8192
+AGENT_MAX_TOKENS = 16384
 
 # ── Flask ─────────────────────────────────────────────────────────────────────
 FLASK_HOST = "0.0.0.0"

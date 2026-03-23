@@ -695,11 +695,22 @@ def get_player_conditional_stats(
     flat_sets = {cid: {g for g, _, _s in s} for cid, s in cond_id_sets.items()}
 
     if all_active:
-        # Intersection: games where ALL condition players appeared AS TEAMMATES
-        def _all_teammates(row):
-            return all(_is_teammate(row, cond_id_sets[cid]) for cid in condition_player_ids)
-        matched  = [r for r in primary_rows if _all_teammates(r)]
-        opposite = [r for r in primary_rows if not _all_teammates(r)]
+        # Intersection: games where ALL condition players also played that day
+        # AND were on the opposing team (not as teammates).
+        # Using flat game_id sets for the "played" check handles multi-team
+        # careers (e.g. Butler MIA→GSW) without needing opponent_abbr filtering.
+        # The additional _is_teammate guard ensures former-teammate games (e.g.
+        # Simmons + Embiid on PHI) are excluded — only true H2H matchups count.
+        def _all_played(row):
+            gid = _norm_game_id(row.get("Game_ID"))
+            return all(gid in flat_sets[cid] for cid in condition_player_ids)
+        def _all_opponents(row):
+            return _all_played(row) and all(
+                not _is_teammate(row, cond_id_sets[cid])
+                for cid in condition_player_ids
+            )
+        matched  = [r for r in primary_rows if _all_opponents(r)]
+        opposite = [r for r in primary_rows if not _all_played(r)]
     else:
         # Complement of union: games where NONE of the condition players played at all
         # (inactive means didn't play, period).
@@ -727,10 +738,16 @@ def get_player_conditional_stats(
         #   KD 2014-15        → played for OKC only (single team, just injured)
         #                       → NO cutoff; Westbrook's full 2014-15 season is valid
         cond_multi_team: dict = {}   # cid → set of seasons with a mid-season team change
+        # cond_season_teams[cid][season] = set of team abbrs the condition player
+        # played for in that season.  Used to confirm the PRIMARY player was on the
+        # same team (handles cases like Luka on DAL pre-trade in 2024-25 — those
+        # DAL games must NOT appear as "LeBron inactive" since they weren't teammates).
+        cond_season_teams: dict = {cid: {} for cid in condition_player_ids}
         for cid in condition_player_ids:
             season_teams: dict = {}
             for _g, t, s in cond_id_sets[cid]:
                 season_teams.setdefault(s, set()).add(t)
+                cond_season_teams[cid].setdefault(s, set()).add(t)
             cond_multi_team[cid] = {s for s, teams in season_teams.items() if len(teams) > 1}
 
         # Per-condition-player: first AND last ISO date per season where they
@@ -770,6 +787,17 @@ def get_player_conditional_stats(
             s = row.get("_season", "")
             if s not in all_valid_seasons:
                 return False
+            # Guard: primary player must have been on the same team as the condition
+            # player in this game.  This catches the case where the PRIMARY player
+            # changed teams mid-season (e.g. Luka DAL→LAL in 2024-25): his pre-trade
+            # DAL games must not appear as "LeBron inactive" splits even though 2024-25
+            # is in all_valid_seasons (because LAL-era games exist that season).
+            primary_team = (row.get("MATCHUP") or "")[:3].upper().strip()
+            if primary_team:
+                for cid in condition_player_ids:
+                    cid_teams = cond_season_teams[cid].get(s, set())
+                    if primary_team not in cid_teams:
+                        return False  # different teams — not a valid teammate split
             iso = _parse_date_sort(row.get("GAME_DATE", ""))
             for cid in condition_player_ids:
                 # Only enforce date bounds in mid-season-trade seasons
@@ -1061,6 +1089,7 @@ def get_multi_player_stats(
         season_to    = cfg.get("season_to",   DEFAULT_SEASON)
         season_type  = cfg.get("season_type", "Regular Season")
         label        = cfg.get("label", "")
+        series_round = (cfg.get("series_round") or "").strip().lower()
 
         try:
             avgs = get_player_season_averages(pid, season_from, season_to, season_type)
@@ -1080,6 +1109,37 @@ def get_multi_player_stats(
             if season_type == "Playoffs" and season_from == season_to:
                 series_data = get_playoff_series_breakdown(pid, season_from)
 
+            # If a specific round is requested (e.g. "finals"), filter
+            # series data to only that round and override the averages.
+            all_series = series_data.get("series", []) if series_data else []
+            total_games = series_data.get("total_games", 0) if series_data else 0
+            if series_round and all_series:
+                # Normalise round label for matching: "finals"→"Finals", "r1"→"R1", etc.
+                label_map = {"finals": "Finals", "cf": "CF", "r1": "R1", "r2": "R2",
+                             "conf finals": "CF", "conference finals": "CF"}
+                target = label_map.get(series_round, series_round.title())
+                filtered_series = [s for s in all_series if s.get("round_label") == target]
+                if filtered_series:
+                    all_series = filtered_series
+                    total_games = sum(s.get("games", 0) for s in filtered_series)
+                    # Override averages with the specific series' stats
+                    if len(filtered_series) == 1:
+                        avgs = dict(filtered_series[0].get("averages", avgs))
+                        avgs["gp"] = total_games
+                    else:
+                        # Multiple matching series (edge case) — GP-weighted avg of series averages
+                        stat_keys_avg = ["pts", "reb", "ast", "stl", "blk", "tov",
+                                         "fg_pct", "fga", "fg3_pct", "fg3a", "ft_pct", "fta"]
+                        merged: dict = {"gp": total_games}
+                        if total_games > 0:
+                            for k in stat_keys_avg:
+                                merged[k] = round(
+                                    sum(s["averages"].get(k, 0) * s.get("games", 0)
+                                        for s in filtered_series if "averages" in s)
+                                    / total_games, 1
+                                )
+                        avgs = merged
+
             results.append({
                 "player_id":    pid,
                 "name":         info.get("full_name", label or f"Player {pid}"),
@@ -1092,8 +1152,8 @@ def get_multi_player_stats(
                 "season_to":    season_to,
                 "season_type":  season_type,
                 "averages":     avgs,
-                "series":       series_data.get("series", []) if series_data else [],
-                "playoff_games": series_data.get("total_games", 0) if series_data else 0,
+                "series":       all_series,
+                "playoff_games": total_games,
             })
         except Exception as e:
             logger.warning(f"get_multi_player_stats player {pid}: {e}")

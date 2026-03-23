@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>NBAClaude</title>
+<title>StatMind</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,400;9..144,700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -29,7 +29,8 @@ body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monosp
 /* Header */
 header { display: flex; align-items: center; justify-content: space-between; padding: 28px 0 20px; border-bottom: 1px solid var(--border); }
 .logo { font-family: 'Barlow Condensed', sans-serif; font-size: 1.5rem; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
-.logo span { color: var(--accent); }
+.logo .stat { color: var(--fg); }
+.logo .mind { color: var(--accent); }
 .logo-dot { display: inline-block; width: 8px; height: 8px; background: var(--accent); border-radius: 50%; margin-left: 4px; animation: pulse-dot 2s ease-in-out infinite; }
 @keyframes pulse-dot { 0%,100% { transform: scale(1); } 50% { transform: scale(1.4); } }
 .header-tag { font-size: .65rem; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; border: 1px solid var(--border); padding: 4px 10px; border-radius: 20px; }
@@ -93,14 +94,14 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .h2h-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 18px; }
 .h2h-divider-col { display: flex; align-items: center; justify-content: center; padding-top: 60px; }
 .h2h-vs-circle { font-family: 'Barlow Condensed', sans-serif; font-size: 1.2rem; font-weight: 900; color: var(--muted); border: 1px solid var(--border); border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
-.h2h-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-.h2h-hs { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; }
-.h2h-pname { font-family: 'Barlow Condensed', sans-serif; font-size: 1.35rem; font-weight: 800; line-height: 1.1; }
-.h2h-team-lbl { font-size: .62rem; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
-.h2h-stat { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); }
+.h2h-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.h2h-hs { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; }
+.h2h-pname { font-family: 'Barlow Condensed', sans-serif; font-size: 1.45rem; font-weight: 800; line-height: 1.1; }
+.h2h-team-lbl { font-size: .68rem; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; margin-top: 2px; }
+.h2h-stat { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); }
 .h2h-stat:last-child { border-bottom: none; }
-.h2h-slbl { font-size: .64rem; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
-.h2h-sval { font-family: 'Barlow Condensed', sans-serif; font-size: 1.45rem; font-weight: 700; }
+.h2h-slbl { font-size: .7rem; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; font-weight: 600; }
+.h2h-sval { font-family: 'Barlow Condensed', sans-serif; font-size: 1.5rem; font-weight: 700; }
 .h2h-sval.better { /* color set inline per player's team color */ }
 
 /* Split (conditional) */
@@ -205,7 +206,7 @@ tbody td { padding: 8px 10px; white-space: nowrap; transition: font-size .15s ea
 <div class="app">
 
 <header>
-  <div class="logo">NBA<span>Claude</span><span class="logo-dot"></span></div>
+  <div class="logo"><span class="stat">Stat</span><span class="mind">Mind</span><span class="logo-dot"></span></div>
   <div style="display:flex;align-items:center;gap:10px">
     <div class="header-tag" style="display:flex;align-items:center;gap:6px;border-color:rgba(247,148,29,.35);color:var(--accent)">
       <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse-dot 2s ease-in-out infinite;flex-shrink:0"></span>
@@ -414,6 +415,18 @@ function fmtInt(v) {
 
 function fmtPct(v) { return fmt(v) + '%'; }
 
+// Return the player's last name, stripping generational suffixes (III, Jr., II, IV, Sr.)
+var NAME_SUFFIXES = /^(i{2,3}|iv|v|jr\.?|sr\.?)$/i;
+function playerLastName(fullName) {
+  if (!fullName) return '';
+  var parts = fullName.trim().split(/\s+/);
+  // Walk backwards skipping suffix tokens
+  for (var i = parts.length - 1; i >= 0; i--) {
+    if (!NAME_SUFFIXES.test(parts[i])) return parts[i];
+  }
+  return parts[parts.length - 1]; // fallback: return last token as-is
+}
+
 function hsUrl(id) {
   return 'https://cdn.nba.com/headshots/nba/latest/1040x760/' + id + '.png';
 }
@@ -516,7 +529,28 @@ function handleEvent(type, data) {
   else if (type === 'tool_start') { addStep('*', data, true); }
   else if (type === 'tool_result') { addStep('+', data, false); }
   else if (type === 'result') {
-    try { renderResults(JSON.parse(data)); } catch(e) { console.error(e); }
+    try {
+      var parsed = JSON.parse(data);
+      if (parsed.type === 'invalid') {
+        // Show inline in the progress panel — no cards rendered
+        var pp = document.getElementById('progress-panel');
+        var invalidEl = document.createElement('div');
+        invalidEl.style.cssText = 'margin-top:14px;padding:12px 16px;border-radius:8px;'
+          + 'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);'
+          + 'display:flex;align-items:flex-start;gap:10px';
+        invalidEl.innerHTML = '<span style="font-size:1rem;opacity:.6">⚠️</span>'
+          + '<div><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.65rem;'
+          + 'font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);'
+          + 'margin-bottom:4px">Invalid Query</div>'
+          + '<div style="font-size:.82rem;color:var(--fg-soft);line-height:1.5">'
+          + (parsed.reason || 'These players have never faced each other as opponents.') + '</div>'
+          + '</div>';
+        document.getElementById('progress-steps').appendChild(invalidEl);
+        setLoading(false);
+      } else {
+        renderResults(parsed);
+      }
+    } catch(e) { console.error(e); }
   } else if (type === 'error') {
     document.getElementById('results').innerHTML = '<div class="error-box">Error: ' + data + '</div>';
     document.getElementById('results').classList.add('visible');
@@ -664,15 +698,14 @@ function renderConditional(d, c) {
       + '</div>';
   }).join('');
 
-  var lastName = function(n) { return n ? n.split(' ').pop() : 'Player'; };
-  var condNames = condPlayers.map(function(p) { return lastName(p.name); }).join(' and ');
+  var condNames = condPlayers.map(function(p) { return playerLastName(p.name) || 'Player'; }).join(' and ');
   var primLbl = (allActive ? 'WITH ' : 'WITHOUT ') + condNames + ' (' + (d.primary_games || 0) + ' games)';
   var cmpLbl  = (allActive ? 'WITHOUT ' : 'WITH ')  + condNames + ' (' + (d.comparison_games || 0) + ' games)';
 
   // ── Two-line header ──────────────────────────────────────────────────────
   // Line 1: OKC  GUARD  w/ KD  2008-09 TO 2015-16
   // Line 2: CURRENT: Sacramento Kings  (only when era team ≠ current team)
-  var condShortNames = condPlayers.map(function(p) { return lastName(p.name); }).join(' & ');
+  var condShortNames = condPlayers.map(function(p) { return playerLastName(p.name) || 'Player'; }).join(' & ');
   var line1 = '';
   if (d.player.team_abbr) {
     line1 += '<div class="meta-tag"><span>' + d.player.team_abbr + '</span></div>';
@@ -771,6 +804,102 @@ function renderH2H(d, c) {
     }).join('');
   };
 
+  // Compute W-L record from the primary player's game log
+  var pLog   = d.player_log || [];
+  var pWins  = pLog.filter(function(r) { return r.result === 'W'; }).length;
+  var pLoss  = pLog.filter(function(r) { return r.result === 'L'; }).length;
+  var totalG = pWins + pLoss;
+  var pShort = playerLastName(p.name);
+  var oShort = playerLastName(op.name);
+  var tied   = pWins === pLoss;
+  var winCol = pWins >= pLoss ? pCol : oCol;
+  var loseCol= pWins >= pLoss ? oCol : pCol;
+  var winShort  = pWins >= pLoss ? pShort : oShort;
+  var loseShort = pWins >= pLoss ? oShort : pShort;
+  var winCount  = pWins >= pLoss ? pWins  : pLoss;
+  var loseCount = pWins >= pLoss ? pLoss  : pWins;
+  var barWinPct  = totalG > 0 ? (winCount / totalG * 100) : 50;
+  var barLosePct = 100 - barWinPct;
+
+  var recordHtml = totalG > 0
+    ? '<div style="background:var(--surface2);border-radius:10px;padding:20px 24px;text-align:center;margin-bottom:28px">'
+      + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.65rem;font-weight:700;'
+      +   'letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">'
+      +   '<span style="color:' + winCol + '">' + winShort + '</span>'
+      +   ' <span style="opacity:.5">vs</span> '
+      +   '<span style="color:' + loseCol + '">' + loseShort + '</span>'
+      + '</div>'
+      + '<div style="margin-bottom:8px;display:flex;align-items:baseline;justify-content:center;gap:10px">'
+      +   '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:3rem;font-weight:900;line-height:1">'
+      +     '<span style="color:' + winCol + '">' + winCount + '<span style="font-size:1.4rem;opacity:.7">W</span></span>'
+      +     '<span style="color:var(--muted);font-size:2rem">&ndash;</span>'
+      +     '<span style="color:' + loseCol + '">' + loseCount + '<span style="font-size:1.4rem;opacity:.7">L</span></span>'
+      +   '</span>'
+      +   (tied ? '<span style="font-size:.65rem;color:var(--muted)">TIED</span>' : '')
+      + '</div>'
+      + '<div style="font-size:.62rem;color:var(--muted);margin-bottom:14px">'
+      +   winShort + ' record vs ' + loseShort + ' &bull; ' + totalG + ' games'
+      + '</div>'
+      + '<div style="height:9px;border-radius:99px;overflow:hidden;display:flex;cursor:default">'
+      +   '<div title="' + winShort + ': ' + winCount + 'W"'
+      +     ' style="flex:' + barWinPct.toFixed(2) + ';background:' + winCol + ';transition:all .2s"'
+      +     ' onmouseenter="this.style.opacity=\'.65\';this.style.height=\'13px\'"'
+      +     ' onmouseleave="this.style.opacity=\'1\';this.style.height=\'9px\'"></div>'
+      +   '<div title="' + loseShort + ': ' + loseCount + 'W"'
+      +     ' style="flex:' + barLosePct.toFixed(2) + ';background:' + loseCol + ';opacity:.3;transition:all .2s"'
+      +     ' onmouseenter="this.style.opacity=\'.7\';this.style.height=\'13px\'"'
+      +     ' onmouseleave="this.style.opacity=\'.3\';this.style.height=\'9px\'"></div>'
+      + '</div>'
+      + '</div>'
+    : '';
+
+  // Build the card header for one H2H player.
+  // Shows era team, a RETIRED badge for retired players, and a "NOW: X" line
+  // for active players who changed teams since the matchup era.
+  function h2hCardHead(player, col, hs) {
+    var name      = player.name || '';
+    var nowTeam   = player.current_team || '';
+    var isRetired = !!player.retired;
+    var eraTeams  = player.era_teams || [];  // [{abbr, name}, ...] in chron. order
+
+    // Team label: pill tags when multiple opponent-era teams, plain text when one
+    var teamLblHtml;
+    if (eraTeams.length > 1) {
+      teamLblHtml = '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px">'
+        + eraTeams.map(function(t) {
+            return '<span style="display:inline-block;font-size:.5rem;font-weight:700;'
+              + 'letter-spacing:.1em;text-transform:uppercase;'
+              + 'background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);'
+              + 'border-radius:3px;padding:2px 6px;color:var(--muted)">' + t.abbr + '</span>';
+          }).join('')
+        + '</div>';
+    } else {
+      teamLblHtml = '<div class="h2h-team-lbl">' + (player.team || '') + '</div>';
+    }
+
+    var secondary = '';
+    if (isRetired) {
+      secondary = '<div style="margin-top:5px">'
+        + '<span style="display:inline-block;font-size:.52rem;font-weight:700;letter-spacing:.12em;'
+        + 'text-transform:uppercase;background:rgba(255,255,255,.07);'
+        + 'border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:2px 7px;'
+        + 'color:var(--muted)">RETIRED</span></div>';
+    } else if (nowTeam) {
+      secondary = '<div style="margin-top:4px;font-size:.58rem;font-weight:600;letter-spacing:.08em;'
+        + 'color:var(--muted);text-transform:uppercase">Now: <span style="color:var(--fg-soft)">'
+        + nowTeam + '</span></div>';
+    }
+    return '<div class="h2h-head">'
+      + '<img class="h2h-hs" src="' + hs + '" style="border:2px solid ' + col + ';border-radius:50%"'
+      +   ' onerror="this.style.display=\'none\'" alt="' + name + '">'
+      + '<div>'
+      +   '<div class="h2h-pname">' + name + '</div>'
+      +   teamLblHtml
+      +   secondary
+      + '</div>'
+      + '</div>';
+  }
+
   c.innerHTML = '<div style="padding:28px 0 20px;border-bottom:1px solid var(--border);margin-bottom:28px">'
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.7rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Head to Head</div>'
     + '<div style="font-size:.8rem;color:var(--muted)">' + (d.season_range || '') + ' &middot; ' + (d.season_type || 'Regular Season') + '</div>'
@@ -778,20 +907,12 @@ function renderH2H(d, c) {
     + insightHtml(d.insight)
     + '<div class="h2h-wrap">'
     +   '<div class="h2h-card" style="border-top:3px solid ' + pCol + '">'
-    +     '<div class="h2h-head">'
-    +       '<img class="h2h-hs" src="' + pHs + '" style="border:2px solid ' + pCol + ';border-radius:50%" onerror="this.style.display=\'none\'" alt="' + (p.name || '') + '">'
-    +       '<div><div class="h2h-pname">' + (p.name || '') + '</div>'
-    +       '<div class="h2h-team-lbl">' + (p.team || '') + '</div></div>'
-    +     '</div>'
+    +     h2hCardHead(p,  pCol, pHs)
     +     statsHtml(pAvg, oAvg, pCol)
     +   '</div>'
     +   '<div class="h2h-divider-col"><div class="h2h-vs-circle">VS</div></div>'
     +   '<div class="h2h-card" style="border-top:3px solid ' + oCol + '">'
-    +     '<div class="h2h-head">'
-    +       '<img class="h2h-hs" src="' + oHs + '" style="border:2px solid ' + oCol + ';border-radius:50%" onerror="this.style.display=\'none\'" alt="' + (op.name || '') + '">'
-    +       '<div><div class="h2h-pname">' + (op.name || '') + '</div>'
-    +       '<div class="h2h-team-lbl">' + (op.team || '') + '</div></div>'
-    +     '</div>'
+    +     h2hCardHead(op, oCol, oHs)
     +     statsHtml(oAvg, pAvg, oCol)
     +   '</div>'
     + '</div>'
@@ -800,6 +921,7 @@ function renderH2H(d, c) {
     +   '<div class="chart-wrap"><canvas id="chart-h2h"></canvas></div></div>'
     + '</div>'
     + '<div class="donuts-row" id="donuts"></div>'
+    + recordHtml
     + '<div id="log-area"></div>';
 
   buildH2HBar('chart-h2h', pAvg, oAvg, p.name || 'Player A', op.name || 'Player B', pCol, oCol);
@@ -1546,8 +1668,8 @@ function fetchH2HMatrix() {
       // Label for sub-text: prefer explicit label, fall back to name
       var labelA = pA.label || nameA;
       var labelB = pB.label || nameB;
-      var shortA = nameA.split(' ').pop();
-      var shortB = nameB.split(' ').pop();
+      var shortA = playerLastName(nameA);
+      var shortB = playerLastName(nameB);
 
       // Show the winning player's perspective; if tied, show A (arbitrary)
       var tied      = aWins === bWins;
@@ -1582,8 +1704,22 @@ function fetchH2HMatrix() {
         primaryWins = winnerIsA ? aWins : bWins;
         primaryLoss = winnerIsA ? aLoss : bLoss;
         unitLabel   = '';
-        var winPct  = gp > 0 ? (primaryWins / gp * 100) : 0;
-        subLabel = winLabel + ' &bull; ' + gp + ' games &bull; ' + winPct.toFixed(1) + '%';
+        // Build "Kobe vs LeBron · 2006 Regular Season · 2 games" — no percentage
+        var seasonStr = (function(p) {
+          var from = p.season_from || '';
+          var to   = p.season_to   || '';
+          var type = p.season_type || 'Regular Season';
+          if (!from) return 'Career';
+          var fromY = parseInt(from.split('-')[0], 10);
+          var toY   = to ? parseInt(to.split('-')[0], 10) : fromY;
+          if (fromY === toY) {
+            // Single season — show end year, e.g. "2005-06" → "2006 Regular Season"
+            return (fromY + 1) + ' ' + type;
+          }
+          if (toY - fromY >= 5) return 'Career';
+          return from + ' \u2013 ' + to + (type === 'Playoffs' ? ' Playoffs' : '');
+        })(pA);
+        subLabel = winShort + ' vs ' + loseShort + ' &bull; ' + seasonStr + ' &bull; ' + gp + ' games';
       }
 
       var totalPrimary = primaryWins + primaryLoss;
@@ -1600,10 +1736,10 @@ function fetchH2HMatrix() {
         + '</div>'
         // Primary record — larger, centered
         + '<div style="margin-bottom:8px;display:flex;align-items:baseline;justify-content:center;gap:10px">'
-        +   '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:3rem;font-weight:900;'
-        +     'line-height:1;color:' + winCol + '">'
-        +     primaryWins + '<span style="font-size:1.4rem;opacity:.7">W</span>'
-        +     '&ndash;' + primaryLoss + '<span style="font-size:1.4rem;opacity:.7">L</span>'
+        +   '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:3rem;font-weight:900;line-height:1">'
+        +     '<span style="color:' + winCol + '">' + primaryWins + '<span style="font-size:1.4rem;opacity:.7">W</span></span>'
+        +     '<span style="color:var(--muted);font-size:2rem">&ndash;</span>'
+        +     '<span style="color:' + loseCol + '">' + primaryLoss + '<span style="font-size:1.4rem;opacity:.7">L</span></span>'
         +   '</span>'
         +   (unitLabel ? '<span style="font-size:.65rem;font-weight:700;letter-spacing:.1em;'
         +     'text-transform:uppercase;color:' + winCol + ';opacity:.7">' + unitLabel + '</span>' : '')
@@ -1770,7 +1906,9 @@ function renderCompare(d, c) {
       }).join('')
     + '</tr></thead><tbody>';
 
-  statKeys.forEach(function(key) {
+  // Always prepend GP so it appears as the first row
+  var tblKeys = ['gp'].concat(statKeys.filter(function(k) { return k !== 'gp'; }));
+  tblKeys.forEach(function(key) {
     var rawVals = players.map(function(p) { return parseFloat((p.averages||{})[key]||0); });
     var isPct   = key.indexOf('pct') !== -1;
     var isTov   = key === 'tov';
@@ -1791,6 +1929,7 @@ function renderCompare(d, c) {
       var col    = isBest ? colors[i] : 'var(--text)';
       var disp   = isPct    ? fmtPct(v)
                  : isCount  ? String(Math.round(v * playerGPs[i]))
+                 : key === 'gp' ? String(Math.round(v))
                  : fmt(v);
       html += '<td style="text-align:right;padding:7px 10px;font-family:\'Barlow Condensed\',sans-serif;'
         + 'font-size:1.25rem;font-weight:' + (isBest?'900':'500') + ';color:' + col + '">' + disp + '</td>';
@@ -2194,7 +2333,7 @@ function renderLeaderboard(d, c) {
     if (title) title.textContent = statLbl.toUpperCase() + ' — Top ' + filtered.length;
     if (!ctx || !filtered.length) return;
     var vals      = filtered.map(function(r) { return r.stat_value; });
-    var lbls      = filtered.map(function(r) { return (r.name || '').split(' ').pop(); });
+    var lbls      = filtered.map(function(r) { return playerLastName(r.name); });
     var bgCols    = filtered.map(function(r) { return teamColor(r.team) + 'CC'; });
     var borderCols= filtered.map(function(r) { return teamColor(r.team); });
     charts['chart-lb'] = new Chart(ctx.getContext('2d'), {

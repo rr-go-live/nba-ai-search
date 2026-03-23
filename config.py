@@ -52,4 +52,4 @@ FLASK_PORT = 5000
 
 # ── Data limits ───────────────────────────────────────────────────────────────
 MAX_GAME_LOG_ROWS = 250    # rows returned to frontend in game log
-MAX_SEASONS_SPAN  = 15     # max seasons fetched in multi-season range queries
+MAX_SEASONS_SPAN  = 30     # max seasons fetched; 30 covers full supported range (1996–2026)

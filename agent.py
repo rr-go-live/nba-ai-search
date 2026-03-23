@@ -69,6 +69,20 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
   For multi-season "prime years", use the peak 3–4 season range.
   label should be human-readable: "Kobe 2010 Finals", "Tatum 2024 Run", etc.
 
+  SEASON PARALLELISM RULE (critical):
+  When one player has an explicit season/type and the other(s) do not, apply
+  the SAME season and type to all players — do not default the unspecified
+  player to their full career or current season.
+  EXAMPLES:
+    "Maxey Playoffs vs Brunson 2024 Playoffs"
+        → both: season_from="2023-24", season_to="2023-24", season_type="Playoffs"
+    "Tatum 2024 Playoffs vs Jaylen Brown"
+        → both: season_from="2023-24", season_to="2023-24", season_type="Playoffs"
+    "LeBron vs Curry 2022 championship run"
+        → both: season_from="2021-22", season_to="2021-22", season_type="Playoffs"
+  Exception: only use different seasons when the query explicitly contrasts eras
+    (e.g. "Kobe 2010 playoffs vs Tatum 2024 playoffs").
+
 ▸ "X stats vs [team] since YYYY" → get_stats_vs_team
 ▸ "X career stats" / "X season-by-season" → get_career_stats (no filters)
 ▸ "X playoff career stats" → get_career_stats
@@ -115,21 +129,43 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
   → H2H means games where BOTH players were active in the same game.
   → Step 1: search_player for both players.
   → Step 2: search_team to find each player's current/relevant team.
-  → Step 3: get_conditional_stats TWICE:
-       Call 1: player_id=LeBron, condition_player_ids=[curry_id],
-               all_active=true, opponent_abbr="GSW" (Curry's team)
-       Call 2: player_id=Curry, condition_player_ids=[lebron_id],
-               all_active=true, opponent_abbr="LAL" (LeBron's team)
+  → Step 3: get_conditional_stats TWICE — do NOT set opponent_abbr for H2H.
+       The game-ID intersection already captures all matchups correctly,
+       including when a player changes teams mid-career.
+       Call 1: player_id=LeBron, condition_player_ids=[curry_id], all_active=true
+       Call 2: player_id=Curry,  condition_player_ids=[lebron_id], all_active=true
   → Output type: "h2h" with player + opponent_player blocks
 
   H2H SEASON RANGE RULE (critical — do not skip):
-  When no season is specified for H2H, ALWAYS use a WIDE range covering
-  every season both players could have faced each other.
-  Default: season_from="2015-16", season_to="2025-26"
-  NEVER default to just the current season for H2H — you will miss most games.
-  "Tatum vs Brunson H2H"    → season_from="2017-18", season_to="2025-26"
-  "LeBron vs Curry H2H"     → season_from="2012-13", season_to="2025-26"
-  "Tatum vs Brunson H2H this season" → season_from="2025-26", season_to="2025-26"
+  When no season is specified, ALWAYS cover EVERY season both players could
+  have faced each other — from when the YOUNGER player entered the league.
+  NEVER default to just the current season — you will miss most games.
+
+  FULL-CAREER DEFAULT: season_from = rookie year of the younger player,
+                       season_to   = "2025-26"
+
+  You MUST look up both players with search_player first, then set the range
+  based on the younger player's first NBA season. Common rookie years:
+    LeBron James          → 2003-04
+    Jimmy Butler          → 2011-12
+    Steph Curry           → 2009-10
+    Kevin Durant          → 2007-08
+    Giannis               → 2013-14
+    Jayson Tatum          → 2017-18
+    Jalen Brunson         → 2018-19
+    Luka Doncic           → 2018-19
+    Nikola Jokic          → 2015-16
+    Kawhi Leonard         → 2011-12
+
+  EXAMPLES — no season qualifier → full career overlap:
+    "LeBron vs Curry H2H"          → season_from="2009-10", season_to="2025-26"
+    "LeBron vs Jimmy Butler H2H"   → season_from="2011-12", season_to="2025-26"
+    "LeBron vs Tatum H2H"          → season_from="2017-18", season_to="2025-26"
+    "Tatum vs Brunson H2H"         → season_from="2018-19", season_to="2025-26"
+    "KD vs Giannis H2H"            → season_from="2013-14", season_to="2025-26"
+  EXAMPLES — with season qualifier → use the specified range only:
+    "Tatum vs Brunson H2H this season" → season_from="2025-26", season_to="2025-26"
+    "LeBron vs Butler H2H since 2020"  → season_from="2019-20", season_to="2025-26"
 
 ▸ Single inactive teammate:
   "Tatum stats when Brown is inactive" / "Tatum without Brown"
@@ -143,6 +179,22 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
       all_active=false)
   → Logic: games where NEITHER condition player appeared (complement of union)
   → Output type: "conditional"
+
+▸ SEASON RANGE FOR CONDITIONAL STATS — CRITICAL:
+  ALWAYS pass the PRIMARY player's FULL career range, NOT your guess of when they
+  became teammates. The backend automatically filters to valid teammate seasons.
+  Passing a narrow range WILL silently drop early seasons and show wrong date headers.
+
+  season_from = primary player's rookie season
+  season_to   = "2025-26"
+
+  EXAMPLES:
+    "Westbrook stats without KD"   → season_from="2008-09", season_to="2025-26"
+    "KD stats without Westbrook"   → season_from="2007-08", season_to="2025-26"
+    "LeBron stats without AD"      → season_from="2003-04", season_to="2025-26"
+    "Giannis stats without Middleton" → season_from="2013-14", season_to="2025-26"
+    "Booker stats without KD"      → season_from="2015-16", season_to="2025-26"
+    "Embiid stats without Harden"  → season_from="2016-17", season_to="2025-26"
 
 ═══════════════════════════════════════════════════════
 SEASON PARSING
@@ -172,12 +224,23 @@ GENERAL INSIGHT RULES:
   • Note efficiency vs volume tradeoffs explicitly.
   • For career arcs: identify peak season(s), note development trends.
   • For splits: quantify the delta (e.g. "+4.2 PPG without Brown").
+  • Write insight as plain prose — NO markdown. No **bold**, no *italic*, no bullet points
+    starting with * or -. Use plain sentences and paragraph breaks only.
   • For H2H: note who had the edge and in what categories.
   • TERMINOLOGY: always say "win %" or "win percentage" — NEVER "win rate".
     e.g. "Tatum's win % in these games was 68%" not "win rate of 68%"
   • TEAM CONTEXT: always mention which team a player was on for the stats shown.
     e.g. "Kawhi's 2014 numbers came as a key piece of the San Antonio Spurs,
     alongside Tim Duncan and Tony Parker" — never just cite numbers in a vacuum.
+  • TRADE CONTEXT: if a player has been traded and the stats shown are entirely from
+    their previous team, say so explicitly. e.g. "All of these games were played while
+    Davis was with the Los Angeles Lakers; he has not faced the Celtics since being
+    traded to the Washington Wizards in February 2026." This explains why the player's
+    current team color differs from the team in the stats.
+  • LEADERBOARD QUALIFIER: when presenting a per-game leaderboard, note the minimum
+    games played threshold used (available as min_gp in the tool result). e.g. "Rankings
+    require a minimum of 58 games played to qualify." This helps users understand why
+    some players with high per-game averages over small samples may not appear.
   • HISTORICAL COMPARISONS: mention era differences, rule changes, pace of play
     when comparing players across different decades.
 
@@ -287,7 +350,8 @@ AVERAGES OBJECT (all fields, use 0.0 for zero values — NEVER null/undefined):
   ],
   "condition_label": "when Jaylen Brown is inactive",
   "all_active": false,
-  "season_range": "2022-23 to 2024-25",
+  "season_range": "2017-18 to 2025-26",  // ALWAYS use primary player's full career range — backend will override with real computed range
+
   "season_type": "Regular Season",
   "primary_averages": { ...averages object... },
   "comparison_averages": { ...averages object... },
@@ -368,6 +432,13 @@ CRITICAL FOR PLAYOFF COMPARISONS:
 - team_abbr MUST match the team during THAT playoff run — see HISTORICAL TEAM COLORS above
   (LeBron 2018 = CLE, Kawhi 2019 = TOR, KD 2019 = GSW, etc.)
 
+COMPARE TITLE FORMAT:
+- All players SAME season+type → mention the season ONCE at the end, not per player:
+    "Stephen Curry vs LeBron James · 2018 Playoffs"   ← CORRECT
+    "Stephen Curry 2018 Playoffs vs LeBron James 2018 Playoffs"  ← WRONG
+- Different seasons/types → include the season per player:
+    "Kobe 2010 Playoffs vs Tatum 2024 Playoffs"  ← CORRECT
+
 ─── TYPE: leaderboard ────────────────────────────────────────
 ```json
 {
@@ -378,6 +449,7 @@ CRITICAL FOR PLAYOFF COMPARISONS:
   "season": "2025-26",
   "season_type": "Regular Season",
   "per_mode": "PerGame",
+  "is_percentage": false,
   "leaders": [
     {
       "rank": 1,
@@ -393,6 +465,7 @@ CRITICAL FOR PLAYOFF COMPARISONS:
       "blk": 0.6,
       "fg_pct": 47.2,
       "fg3_pct": 36.1,
+      "fg3a": 6.2,
       "stat_value": 27.5
     }
   ],
@@ -469,6 +542,7 @@ class NBAStatsAgent:
         # any game log arrays that Gemini truncated in its final JSON output.
         # Keyed by "{tool_name}_{iteration}_{index}" (Gemini has no tool_use_id).
         raw_tool_cache: dict = {}
+        empty_stop_retries  = 0
 
         # ── Usage / cost accumulators ────────────────────────────────────────
         total_input_tokens  = 0
@@ -519,12 +593,34 @@ class NBAStatsAgent:
                         return {"success": False, "error": err_str}
 
             if response is None or not response.candidates:
+                # Check if the prompt was blocked by safety filters
+                feedback = getattr(response, "prompt_feedback", None) if response else None
+                block_reason = getattr(feedback, "block_reason", None) if feedback else None
+                if block_reason:
+                    err = f"Query blocked by content filter ({block_reason}). Try rephrasing."
+                    logger.error(f"[DEBUG] Prompt blocked: {block_reason}")
+                    progress_cb("error", err)
+                    return {"success": False, "error": err}
                 logger.error("[DEBUG] Gemini returned no candidates — breaking loop")
                 break
 
             candidate = response.candidates[0]
             finish_reason = getattr(candidate, "finish_reason", None)
-            parts = candidate.content.parts if candidate.content else []
+            parts = (candidate.content and candidate.content.parts) or []
+
+            # Empty response (0 tokens, STOP) — can be a transient model glitch or
+            # silent content filter. Retry up to 2 times with a small delay.
+            if not parts and str(finish_reason) in ("FinishReason.STOP", "STOP", "1"):
+                if empty_stop_retries < 2:
+                    empty_stop_retries += 1
+                    logger.warning(f"[DEBUG] Empty STOP response at iter={iteration} — retrying ({empty_stop_retries}/2)")
+                    time.sleep(1)
+                    continue
+                else:
+                    err = "The AI model returned an empty response for this query. Try rephrasing or searching again."
+                    logger.error("[DEBUG] Empty STOP response after 2 retries — returning error")
+                    progress_cb("error", err)
+                    return {"success": False, "error": err}
 
             # Filter out thought parts (Gemini 2.5 Flash is a thinking model;
             # thought=True parts contain internal reasoning, not visible output).
@@ -672,6 +768,31 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
     result_type = result.get("type", "")
 
     if result_type == "leaderboard":
+        # Override with authoritative raw tool data so the model can't reformat
+        # percentages (0.459 → 45.9) or drop fields like is_percentage / fg3a.
+        raw_lb = next(
+            (e["result"] for e in cache.values() if e.get("name") == "get_leaderboard"),
+            None,
+        )
+        if raw_lb and raw_lb.get("leaders"):
+            # Carry over all metadata fields the model template doesn't include
+            for field in ("stat_category", "stat_label", "season", "season_type",
+                          "per_mode", "min_gp", "is_percentage",
+                          "season_fallback_used", "season_requested"):
+                if field in raw_lb:
+                    result[field] = raw_lb[field]
+            # Replace the leaders array entirely with the authoritative data,
+            # but preserve the model's insight by keeping result["insight"].
+            model_leaders = {r.get("rank"): r for r in result.get("leaders", [])}
+            merged = []
+            for raw_row in raw_lb["leaders"]:
+                row = dict(raw_row)
+                rank = row.get("rank")
+                if rank in model_leaders:
+                    # Use model name/team if they differ (model may have better formatting)
+                    pass  # raw data is authoritative for all numeric fields
+                merged.append(row)
+            result["leaders"] = merged
         return result
 
     if result_type == "compare":
@@ -705,6 +826,7 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
     cond_results    = []
     career_results  = []
 
+    search_player_results = []
     for entry in cache.values():
         name = entry.get("name", "")
         raw  = entry.get("result", {})
@@ -714,6 +836,8 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
             cond_results.append(raw)
         elif name == "get_career_stats":
             career_results.append(raw)
+        elif name == "search_player" and raw.get("found"):
+            search_player_results.append(raw)
 
     # NOTE: For ALL types that contain percentage averages we override from the
     # raw tool cache.  Gemini re-formats the backend's 0–100 scale values (e.g.
@@ -721,11 +845,31 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
     # causes donut charts and stat cards to display 0.5% instead of 47.2%.
     # Overriding from the cache bypasses the model's reformatting entirely.
 
+    # Always override player.team / player.team_abbr from the search_player tool
+    # result — the model frequently uses stale team data from its training weights
+    # (e.g. showing "Lakers" for Anthony Davis after he was traded to Washington).
+    # Match by player_id so we don't accidentally apply AD's team to LeBron when
+    # both are searched in the same query.
+    if search_player_results and result.get("player"):
+        primary_pid = result["player"].get("player_id") or result["player"].get("id")
+        sp = next(
+            (s for s in reversed(search_player_results) if s.get("player_id") == primary_pid),
+            None,
+        )
+        if sp is None:
+            sp = search_player_results[-1]   # fallback: single-player queries
+        if sp.get("team"):      result["player"]["team"]      = sp["team"]
+        if sp.get("team_abbr"): result["player"]["team_abbr"] = sp["team_abbr"]
+
     if result_type == "vs_team" and vs_team_results:
         raw = vs_team_results[-1]
         if "game_log" in raw:  result["game_log"] = raw["game_log"]
         # Override averages so fg_pct etc. stay on the 0–100 scale
         if "averages" in raw:  result["averages"] = raw["averages"]
+        # Pass through playoff data (model may omit or reformat these)
+        for key in ("playoff_averages", "playoff_game_log", "playoff_splits", "playoff_total_games"):
+            if key in raw:
+                result[key] = raw[key]
 
     elif result_type == "conditional" and cond_results:
         raw = cond_results[-1]
@@ -735,6 +879,31 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
         if "comparison_games"    in raw: result["comparison_games"]    = raw["comparison_games"]
         if "primary_averages"    in raw: result["primary_averages"]    = raw["primary_averages"]
         if "comparison_averages" in raw: result["comparison_averages"] = raw["comparison_averages"]
+        # Override LLM's season_range with backend-computed value from actual game data
+        if raw.get("computed_season_range"):
+            result["season_range"] = raw["computed_season_range"]
+
+        # Derive historical team_abbr from game log matchup data so the color
+        # reflects the era (e.g. Westbrook on OKC, not current Kings).
+        # Use the most common team abbreviation across all rows (matchup[:3]).
+        # Save the current team so the UI can show both when they differ.
+        if result.get("player"):
+            all_rows = list(raw.get("primary_log") or []) + list(raw.get("comparison_log") or [])
+            if all_rows:
+                from collections import Counter
+                abbr_counts = Counter(
+                    r.get("matchup", "")[:3].upper()
+                    for r in all_rows
+                    if r.get("matchup", "")[:3].strip()
+                )
+                if abbr_counts:
+                    era_abbr = abbr_counts.most_common(1)[0][0]
+                    current_abbr = result["player"].get("team_abbr", "")
+                    if era_abbr and era_abbr != current_abbr:
+                        # Preserve current team for UI display, override color team
+                        result["player"]["current_team_abbr"] = current_abbr
+                        result["player"]["current_team"] = result["player"].get("team", "")
+                    result["player"]["team_abbr"] = era_abbr
 
     elif result_type == "career" and career_results:
         raw = career_results[-1]
@@ -812,23 +981,52 @@ def _summarise(name: str, result: dict) -> str:
 
 def _extract_json(text: str) -> dict:
     import re
-    m = re.search(r"```json\s*([\s\S]*?)```", text)
-    if m:
-        raw = m.group(1).strip()
+
+    def _try_parse(raw: str) -> dict:
+        raw = raw.strip()
         try:
             return json.loads(raw)
         except json.JSONDecodeError as e:
             logger.error(f"[DEBUG] JSON parse error: {e}")
-            # Show the area around the parse error (col number from exception)
             char = getattr(e, "pos", 0)
             snippet = raw[max(0, char - 80): char + 80]
             logger.error(f"[DEBUG] JSON error near char {char}: ...{snippet!r}...")
             logger.error(f"[DEBUG] Full JSON block length={len(raw)} first300={raw[:300]!r}")
-    else:
-        logger.error(f"[DEBUG] No ```json block found in model output (text length={len(text)})")
-        if text:
-            logger.error(f"[DEBUG] Output head: {text[:300]!r}")
-            logger.error(f"[DEBUG] Output tail: {text[-300:]!r}")
+        return {}
+
+    # 1. Prefer a properly closed ```json ... ``` fence
+    m = re.search(r"```json\s*([\s\S]*?)```", text)
+    if m:
+        result = _try_parse(m.group(1))
+        if result:
+            return result
+
+    # 2. Gemini sometimes emits ```json ... { } without the closing fence.
+    #    Find the opening fence and grab everything from the first { to the last }.
+    fence_idx = text.find("```json")
+    if fence_idx != -1:
+        after_fence = text[fence_idx + 7:]  # skip "```json"
+        brace_start = after_fence.find("{")
+        brace_end   = after_fence.rfind("}")
+        if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
+            result = _try_parse(after_fence[brace_start: brace_end + 1])
+            if result:
+                logger.warning("[DEBUG] Recovered JSON from unclosed ```json fence")
+                return result
+
+    # 3. Last resort: bare JSON object in the text
+    brace_start = text.find("{")
+    brace_end   = text.rfind("}")
+    if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
+        result = _try_parse(text[brace_start: brace_end + 1])
+        if result:
+            logger.warning("[DEBUG] Recovered bare JSON object from model output")
+            return result
+
+    logger.error(f"[DEBUG] No JSON found in model output (text length={len(text)})")
+    if text:
+        logger.error(f"[DEBUG] Output head: {text[:300]!r}")
+        logger.error(f"[DEBUG] Output tail: {text[-300:]!r}")
     return {}
 
 

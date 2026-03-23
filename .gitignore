@@ -1,3 +1,5 @@
 .env
 *.csv
 usage_data/
+testing/
+analyze/

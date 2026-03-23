@@ -116,7 +116,7 @@ TOOL_DEFINITIONS = [
                 "all_active":           {"type": "boolean", "description": "true=H2H/all active, false=inactive split"},
                 "season_from":          {"type": "string",  "description": "Start season"},
                 "season_to":            {"type": "string",  "description": "End season"},
-                "opponent_abbr":        {"type": "string",  "description": "Optional opponent team filter (use for H2H)"},
+                "opponent_abbr":        {"type": "string",  "description": "Optional opponent team filter — do NOT use for H2H (all_active=true); only use for inactive splits (all_active=false)."},
                 "season_type":          {"type": "string",  "description": "'Regular Season' or 'Playoffs'"},
             },
             "required": ["player_id", "condition_player_ids", "all_active"],

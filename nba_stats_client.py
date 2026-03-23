@@ -449,31 +449,42 @@ def get_player_vs_team_stats(
     season_to: str   = DEFAULT_SEASON,
     season_type: str = "Regular Season",
 ) -> dict:
-    """Player averages + game log vs specific opponent across multiple seasons."""
-    all_rows, splits = [], []
-    for season in seasons_between(season_from, season_to):
-        try:
-            rows     = _game_log(player_id, season, season_type)
-            filtered = _filter_opponent(rows, opponent_abbr)
-            if filtered:
-                s = _avg(filtered)
-                s["season"] = season
-                splits.append(s)
-                all_rows.extend(filtered)
-        except Exception as e:
-            logger.warning(f"GameLog {season}: {e}")
-    # Sort newest games first so [:MAX_GAME_LOG_ROWS] always keeps the most
-    # recent matchups. SEASON is already a string like "2024-25" so it sorts
-    # lexicographically correctly. GAME_DATE within a season comes back
-    # newest-first from the API so no secondary sort needed.
-    all_rows.sort(key=lambda r: r.get("SEASON", ""), reverse=True)
+    """Player averages + game log vs specific opponent across multiple seasons.
+    Always fetches both Regular Season and Playoffs; returns each separately.
+    """
+    def _fetch_type(stype: str):
+        rows_all, splits = [], []
+        for season in seasons_between(season_from, season_to):
+            try:
+                rows     = _game_log(player_id, season, stype)
+                filtered = _filter_opponent(rows, opponent_abbr)
+                if filtered:
+                    s = _avg(filtered)
+                    s["season"] = season
+                    splits.append(s)
+                    rows_all.extend(filtered)
+            except Exception as e:
+                logger.warning(f"GameLog {season} {stype}: {e}")
+        rows_all.sort(key=lambda r: r.get("SEASON", ""), reverse=True)
+        return rows_all, splits
 
-    return {
-        "averages":      _avg(all_rows),
-        "season_splits": splits,
-        "game_log":      [_to_row(r) for r in all_rows][:MAX_GAME_LOG_ROWS],
-        "total_games":   len(all_rows),
+    rs_rows, rs_splits = _fetch_type("Regular Season")
+    po_rows, po_splits = _fetch_type("Playoffs")
+
+    result = {
+        "averages":        _avg(rs_rows),
+        "season_splits":   rs_splits,
+        "game_log":        [_to_row(r) for r in rs_rows][:MAX_GAME_LOG_ROWS],
+        "total_games":     len(rs_rows),
     }
+
+    if po_rows:
+        result["playoff_averages"]   = _avg(po_rows)
+        result["playoff_splits"]     = po_splits
+        result["playoff_game_log"]   = [_to_row(r) for r in po_rows][:MAX_GAME_LOG_ROWS]
+        result["playoff_total_games"] = len(po_rows)
+
+    return result
 
 
 def get_player_career_stats(
@@ -633,8 +644,17 @@ def get_player_conditional_stats(
     for season in all_seasons:
         try:
             rows = _game_log(player_id, season, season_type)
-            if opponent_abbr:
+            # For H2H (all_active=True) do NOT pre-filter by opponent_abbr —
+            # the game-ID intersection with condition players already captures
+            # all matchups correctly, including when the condition player changes
+            # teams mid-career (e.g. Jimmy Butler MIA→GSW → filtering by "GSW"
+            # for LeBron would yield only 1 game instead of 31).
+            # Only apply the opponent filter for inactive splits (all_active=False).
+            if opponent_abbr and not all_active:
                 rows = _filter_opponent(rows, opponent_abbr)
+            # Tag each row with the season so we can build per-season cutoffs later
+            for r in rows:
+                r["_season"] = season
             primary_rows.extend(rows)
         except Exception as e:
             logger.warning(f"Primary log {season}: {e}")
@@ -642,33 +662,168 @@ def get_player_conditional_stats(
         for cid in condition_player_ids:
             try:
                 crows = _game_log(cid, season, season_type)
-                cond_id_sets[cid].update(
-                    _norm_game_id(r.get("Game_ID")) for r in crows
-                )
+                for r in crows:
+                    gid = _norm_game_id(r.get("Game_ID"))
+                    # Store (game_id, team_abbr, season) so we can later restrict
+                    # the inactive split to seasons/periods where they were teammates.
+                    matchup = (r.get("MATCHUP") or "").upper()
+                    team_abbr = matchup[:3] if len(matchup) >= 3 else ""
+                    cond_id_sets[cid].add((gid, team_abbr, season))
             except Exception as e:
                 logger.warning(f"Condition player {cid} log {season}: {e}")
 
     if not primary_rows:
         return {"error": "No game log data found."}
 
-    if all_active:
-        # Intersection: games where ALL condition players appeared
-        matched_ids = set(_norm_game_id(r.get("Game_ID")) for r in primary_rows)
-        for cid_set in cond_id_sets.values():
-            matched_ids &= cid_set
-        matched  = [r for r in primary_rows if _norm_game_id(r.get("Game_ID")) in matched_ids]
-        opposite = [r for r in primary_rows if _norm_game_id(r.get("Game_ID")) not in matched_ids]
-    else:
-        # Complement of union: games where NONE of the condition players appeared
-        union_ids = set()
-        for cid_set in cond_id_sets.values():
-            union_ids |= cid_set
-        matched  = [r for r in primary_rows if _norm_game_id(r.get("Game_ID")) not in union_ids]
-        opposite = [r for r in primary_rows if _norm_game_id(r.get("Game_ID")) in union_ids]
+    def _is_teammate(primary_row, cid_set):
+        """
+        Return True only when the condition player appeared in the same game
+        AND was on the same team as the primary player (not an opponent).
+        Uses the MATCHUP field to determine each player's team abbreviation.
+        Primary MATCHUP: "LAL vs. WAS"  → primary team = "LAL", opp = "WAS"
+        Condition stored as (game_id, team_abbr, season) tuples.
+        """
+        gid = _norm_game_id(primary_row.get("Game_ID"))
+        # Extract primary player's opponent abbreviation from their MATCHUP
+        primary_matchup = (primary_row.get("MATCHUP") or "").upper()
+        # MATCHUP is "TEAM vs. OPP" or "TEAM @ OPP" — opponent is last 3 chars
+        opp_abbr = primary_matchup[-3:] if len(primary_matchup) >= 3 else ""
+        # A condition entry (gid, team, season) is a teammate if same game AND their team != opponent
+        return any(g == gid and t != opp_abbr for g, t, _s in cid_set)
 
-    # Sort both logs newest-first before slicing
-    matched.sort( key=lambda r: r.get("SEASON", ""), reverse=True)
-    opposite.sort(key=lambda r: r.get("SEASON", ""), reverse=True)
+    # Build flat game_id-only sets for efficient "played that day" checks
+    flat_sets = {cid: {g for g, _, _s in s} for cid, s in cond_id_sets.items()}
+
+    if all_active:
+        # Intersection: games where ALL condition players appeared AS TEAMMATES
+        def _all_teammates(row):
+            return all(_is_teammate(row, cond_id_sets[cid]) for cid in condition_player_ids)
+        matched  = [r for r in primary_rows if _all_teammates(r)]
+        opposite = [r for r in primary_rows if not _all_teammates(r)]
+    else:
+        # Complement of union: games where NONE of the condition players played at all
+        # (inactive means didn't play, period).
+        #
+        # BUT we must restrict to seasons/periods when the condition player(s) were
+        # actually on the primary player's team.  After a trade the condition player
+        # gets entirely new game_ids (for their new team), so their former-team games
+        # are never in union_ids — causing the primary player's post-trade games to
+        # appear falsely as "without <condition player>".
+        #
+        # Fix: for each condition player compute
+        #   • valid_seasons   — seasons with ≥1 teammate game
+        #   • last_tm_gid[s]  — last game_id in season s where they were a teammate
+        # Then restrict primary_rows to those seasons, and within mid-season-trade
+        # seasons, only games up to that cutoff game_id.
+
+        # Detect seasons where the condition player played for MULTIPLE teams
+        # (i.e. a mid-season trade).  Only in those seasons do we apply date
+        # cutoffs — an injury absence at the start/end of a season must NOT
+        # shrink the "without" window.
+        #
+        # Example:
+        #   Pau Gasol 2007-08 → played for MEM then LAL (multi-team) → apply first/last
+        #   AD 2025-26        → played for LAL then WAS (multi-team) → apply first/last
+        #   KD 2014-15        → played for OKC only (single team, just injured)
+        #                       → NO cutoff; Westbrook's full 2014-15 season is valid
+        cond_multi_team: dict = {}   # cid → set of seasons with a mid-season team change
+        for cid in condition_player_ids:
+            season_teams: dict = {}
+            for _g, t, s in cond_id_sets[cid]:
+                season_teams.setdefault(s, set()).add(t)
+            cond_multi_team[cid] = {s for s, teams in season_teams.items() if len(teams) > 1}
+
+        # Per-condition-player: first AND last ISO date per season where they
+        # were a teammate.  Only relevant for multi-team seasons (trades).
+        cond_first_tm = {cid: {} for cid in condition_player_ids}
+        cond_last_tm  = {cid: {} for cid in condition_player_ids}
+        for cid in condition_player_ids:
+            for row in primary_rows:
+                if _is_teammate(row, cond_id_sets[cid]):
+                    s    = row.get("_season", "")
+                    # Skip seasons where condition player stayed on one team —
+                    # we don't need date bounds there.
+                    if s not in cond_multi_team[cid]:
+                        continue
+                    iso  = _parse_date_sort(row.get("GAME_DATE", ""))
+                    prev_first = cond_first_tm[cid].get(s)
+                    prev_last  = cond_last_tm[cid].get(s)
+                    if not prev_first or iso < prev_first:
+                        cond_first_tm[cid][s] = iso
+                    if not prev_last or iso > prev_last:
+                        cond_last_tm[cid][s] = iso
+
+        # Valid seasons = seasons where ALL condition players were ever teammates.
+        # Build a per-season set of seasons where _is_teammate fired at least once.
+        cond_valid_seasons: dict = {cid: set() for cid in condition_player_ids}
+        for row in primary_rows:
+            s = row.get("_season", "")
+            for cid in condition_player_ids:
+                if s not in cond_valid_seasons[cid] and _is_teammate(row, cond_id_sets[cid]):
+                    cond_valid_seasons[cid].add(s)
+
+        all_valid_seasons: set = set()
+        for i, cid in enumerate(condition_player_ids):
+            all_valid_seasons = cond_valid_seasons[cid] if i == 0 else all_valid_seasons & cond_valid_seasons[cid]
+
+        def _in_valid_range(row) -> bool:
+            s = row.get("_season", "")
+            if s not in all_valid_seasons:
+                return False
+            iso = _parse_date_sort(row.get("GAME_DATE", ""))
+            for cid in condition_player_ids:
+                # Only enforce date bounds in mid-season-trade seasons
+                if s not in cond_multi_team[cid]:
+                    continue
+                first = cond_first_tm[cid].get(s)
+                last  = cond_last_tm[cid].get(s)
+                if first and iso < first:
+                    return False
+                if last and iso > last:
+                    return False
+            return True
+
+        primary_rows_valid = [r for r in primary_rows if _in_valid_range(r)]
+
+        # Build union of condition-player game_ids that fall in the valid window.
+        # For multi-team seasons, restrict to the teammate portion only.
+        union_ids: set = set()
+        for cid in condition_player_ids:
+            for g, _t, s in cond_id_sets[cid]:
+                if s not in all_valid_seasons:
+                    continue
+                if s in cond_multi_team[cid]:
+                    # Only include teammate-era games (before cutoff)
+                    first = cond_first_tm[cid].get(s)
+                    last  = cond_last_tm[cid].get(s)
+                    if not first or not last:
+                        continue
+                    # Approximate: include any game_id from this season from
+                    # cond_id_sets — non-matching game_ids won't appear in
+                    # primary_rows_valid anyway (date-filtered out).
+                union_ids.add(g)
+
+        matched  = [r for r in primary_rows_valid if _norm_game_id(r.get("Game_ID")) not in union_ids]
+        opposite = [r for r in primary_rows_valid if _norm_game_id(r.get("Game_ID")) in union_ids]
+
+    # Sort both logs newest-first before slicing.
+    # GAME_DATE from NBA API is "OCT 22, 2024" — must parse to YYYY-MM-DD first.
+    def _sort_key(r):
+        return _parse_date_sort(r.get("GAME_DATE", "") or "")
+    matched.sort( key=_sort_key, reverse=True)
+    opposite.sort(key=_sort_key, reverse=True)
+
+    # Compute season_range from the actual valid seasons in the game data,
+    # not from the LLM's guess — e.g. "2012-13 TO 2024-25" for Giannis/Middleton.
+    all_seasons_present = sorted({
+        r.get("_season", "") for r in (matched + opposite) if r.get("_season")
+    })
+    if all_seasons_present:
+        computed_range = (all_seasons_present[0] + " TO " + all_seasons_present[-1]
+                         if all_seasons_present[0] != all_seasons_present[-1]
+                         else all_seasons_present[0])
+    else:
+        computed_range = None
 
     return {
         "primary_averages":    _avg(matched),
@@ -679,6 +834,7 @@ def get_player_conditional_stats(
         "comparison_log":      [_to_row(r) for r in opposite][:MAX_GAME_LOG_ROWS],
         "all_active":          all_active,
         "total_games":         len(primary_rows),
+        "computed_season_range": computed_range,
     }
 
 
@@ -1048,6 +1204,8 @@ def get_h2h_matrix(players: list) -> dict:
             tmap_b = team_by_season.get(pid_b, {})
 
             a_wins = a_losses = 0
+            # For series tracking: group games by season_id → {wins, losses}
+            series_by_season: dict = {}
             for g in all_games.get(pid_a, []):
                 sid    = str(g.get("SEASON_ID", ""))
                 s_year = _season_id_to_year(sid)
@@ -1066,19 +1224,34 @@ def get_h2h_matrix(players: list) -> dict:
                     wl = str(g.get("WL", ""))
                     if wl == "W":
                         a_wins += 1
+                        series_by_season.setdefault(sid, {"w": 0, "l": 0})["w"] += 1
                     elif wl == "L":
                         a_losses += 1
+                        series_by_season.setdefault(sid, {"w": 0, "l": 0})["l"] += 1
+
+            # Series records (only meaningful for playoffs — each season = one series)
+            a_series_wins = a_series_losses = 0
+            for rec in series_by_season.values():
+                if rec["w"] > rec["l"]:
+                    a_series_wins += 1
+                else:
+                    a_series_losses += 1
 
             pairs.append({
                 "player_a_id":   pid_a,
                 "player_a_name": cfg_a.get("name", ""),
                 "player_b_id":   pid_b,
                 "player_b_name": cfg_b.get("name", ""),
-                "a_wins":   a_wins,
-                "a_losses": a_losses,
-                "b_wins":   a_losses,   # mirror: B won the games A lost
-                "b_losses": a_wins,
-                "gp":       a_wins + a_losses,
+                "a_wins":          a_wins,
+                "a_losses":        a_losses,
+                "b_wins":          a_losses,   # mirror: B won the games A lost
+                "b_losses":        a_wins,
+                "gp":              a_wins + a_losses,
+                "a_series_wins":   a_series_wins,
+                "a_series_losses": a_series_losses,
+                "b_series_wins":   a_series_losses,
+                "b_series_losses": a_series_wins,
+                "is_playoffs":     season_type == "Playoffs",
             })
 
     return {"pairs": pairs}
@@ -1135,12 +1308,13 @@ def _get_leaderboard_leaguedash(
     per_mode: str,
     category: str,
     top_n: int,
+    min_gp: int = 0,
 ) -> list:
     """
     Fallback leaderboard using LeagueDashPlayerStats (nba_api endpoint).
     Returns rows in leagueleaders column format so get_leaderboard() can
     process them without branching.  Used when leagueleaders returns nothing
-    for 2025-26 (endpoint often lags behind the live season).
+    for recent seasons (endpoint often lags behind the live season).
     """
     try:
         from nba_api.stats.endpoints import leaguedashplayerstats
@@ -1171,12 +1345,55 @@ def _get_leaderboard_leaguedash(
             logger.warning(f"LeagueDash fallback: column '{col}' not in dataframe")
             return []
 
+        # Apply GP qualifier for per-game stats to avoid small-sample outliers
+        if min_gp > 0 and "GP" in df.columns:
+            df = df[df["GP"] >= min_gp]
+            if df.empty:
+                logger.warning(f"LeagueDash fallback: no players with GP >= {min_gp} for {season} {category}")
+                return []
+
+        # Minimum attempts qualifier for percentage stats (mirrors NBA official rules)
+        # FG3_PCT: ≥4.0 three-point attempts per game (PerGame) or ≥328 total (Totals)
+        # FG_PCT:  ≥3.0 field-goal attempts per game or ≥246 total
+        # FT_PCT:  ≥1.5 free-throw attempts per game or ≥82 total
+        PCT_ATTEMPTS = {
+            "FG3_PCT": ("FG3A", 4.0, 328),
+            "FG_PCT":  ("FGA",  3.0, 246),
+            "FT_PCT":  ("FTA",  1.5,  82),
+        }
+        if category in PCT_ATTEMPTS:
+            att_col, pg_thresh, tot_thresh = PCT_ATTEMPTS[category]
+            thresh = pg_thresh if per_mode == "PerGame" else tot_thresh
+            if att_col in df.columns:
+                before = len(df)
+                df = df[df[att_col] >= thresh]
+                logger.info(f"LeagueDash {category}: filtered {before - len(df)} players below {thresh} {att_col}")
+                if df.empty:
+                    logger.warning(f"LeagueDash fallback: no qualified players for {category} {season}")
+                    return []
+
         df_sorted = df.sort_values(col, ascending=False).head(top_n).reset_index(drop=True)
+
+        # Lazy import for name-based player ID lookup
+        try:
+            from nba_api.stats.static import players as nba_players_static
+            _player_name_to_id = {
+                p["full_name"].lower(): p["id"]
+                for p in nba_players_static.get_players()
+            }
+        except Exception:
+            _player_name_to_id = {}
 
         rows = []
         for _, r in df_sorted.iterrows():
+            raw_id = r.get("PLAYER_ID")
+            # pandas NaN → 0 via _safe_int; try name lookup as fallback
+            pid = int(raw_id) if (raw_id is not None and raw_id == raw_id) else 0
+            if not pid:
+                name = str(r.get("PLAYER_NAME", "") or "").lower()
+                pid = _player_name_to_id.get(name, 0)
             rows.append({
-                "PLAYER_ID": r.get("PLAYER_ID"),
+                "PLAYER_ID": pid,
                 "PLAYER":    r.get("PLAYER_NAME", ""),
                 "TEAM":      r.get("TEAM_ABBREVIATION", ""),
                 "GP":        r.get("GP"),
@@ -1187,6 +1404,7 @@ def _get_leaderboard_leaguedash(
                 "BLK":       r.get("BLK"),
                 "FG_PCT":    r.get("FG_PCT"),
                 "FG3_PCT":   r.get("FG3_PCT"),
+                "FG3A":      r.get("FG3A"),
                 col:         r.get(col),
             })
         logger.info(f"LeagueDash fallback: {len(rows)} rows for {season} {category}")
@@ -1287,54 +1505,79 @@ def get_leaderboard(
     cat_key = stat.strip().lower()
     category = STAT_CATEGORY_MAP.get(cat_key, cat_key.upper())
 
+    # Percentage stats (0.0–1.0 from the API) are multiplied ×100 before
+    # being stored in stat_value so the frontend always receives 0–100 values.
+    PCT_STATS = {"FG_PCT", "FG3_PCT", "FT_PCT"}
+    is_percentage = category in PCT_STATS
+
     top_n = min(max(top_n, 1), 25)
+
+    # GP qualifier: for per-game stats enforce a minimum so small-sample
+    # players don't top the list.  NBA's official threshold is ~58 games
+    # (70 % of 82) for Regular Season.  Playoffs have no GP minimum because
+    # the max possible games in a full run is only ~28, and the leagueleaders
+    # endpoint already applies its own qualifier for Playoffs.
+    if per_mode == "PerGame" and season_type != "Playoffs":
+        min_gp = 58
+    else:
+        min_gp = 0
 
     requested_season = parse_season(season)
     season_chain = _season_fallback_chain(requested_season, depth=5)
     used_season = requested_season
     raw_rows = []
 
-    for cand in season_chain:
-        try:
-            time.sleep(NBA_API_DELAY)
-            data = nba_http.get_parsed(
-                "leagueleaders",
-                params={
-                    "LeagueID":    "00",
-                    "PerMode":     per_mode,
-                    "Scope":       "S",
-                    "Season":      cand,
-                    "SeasonType":  season_type,
-                    "StatCategory": category,
-                },
-                timeout=NBA_API_TIMEOUT,
-            )
-        except Exception as e:
-            logger.error(f"leagueleaders {category} {cand}: {e}")
-            continue
+    # leagueleaders with SeasonType=Playoffs uses an internal qualifier that
+    # often excludes deep-playoff teams (e.g. the eventual champion).  Skip it
+    # entirely for Playoffs and go straight to LeagueDash which is accurate.
+    if season_type != "Playoffs":
+        for cand in season_chain:
+            try:
+                time.sleep(NBA_API_DELAY)
+                data = nba_http.get_parsed(
+                    "leagueleaders",
+                    params={
+                        "LeagueID":    "00",
+                        "PerMode":     per_mode,
+                        "Scope":       "S",
+                        "Season":      cand,
+                        "SeasonType":  season_type,
+                        "StatCategory": category,
+                    },
+                    timeout=NBA_API_TIMEOUT,
+                )
+            except Exception as e:
+                logger.error(f"leagueleaders {category} {cand}: {e}")
+                continue
 
-        rows = data.get("LeagueLeaders", [])
-        if rows:
-            raw_rows = rows[:top_n]
-            used_season = cand
-            break
+            rows = data.get("LeagueLeaders", [])
+            if rows:
+                # Apply GP qualifier for per-game stats
+                if min_gp > 0:
+                    rows = [r for r in rows if _safe_int(r.get("GP")) >= min_gp]
+                raw_rows = rows[:top_n]
+                if raw_rows:
+                    used_season = cand
+                    break
 
-    # For 2025-26, leagueleaders often lags behind the live season.
-    # Fall back to LeagueDashPlayerStats which is updated more frequently.
-    if not raw_rows and requested_season >= "2025-26" and season_type == "Regular Season":
-        logger.info(f"Trying LeagueDash fallback for {requested_season} {category} leaderboard")
+    # LeagueDash fallback: fires any time leagueleaders returns empty/filtered-out
+    # data, including historical seasons where the GP filter may have removed all
+    # rows due to key mismatches, plus Playoffs (always) and current seasons.
+    if not raw_rows:
+        logger.info(f"Trying LeagueDash fallback for {requested_season} {category} {season_type} leaderboard")
         raw_rows = _get_leaderboard_leaguedash(
             season=requested_season,
             season_type=season_type,
             per_mode=per_mode,
             category=category,
             top_n=top_n,
+            min_gp=min_gp,
         )
         if raw_rows:
             used_season = requested_season
 
     if not raw_rows:
-        if requested_season >= "2025-26" and season_type == "Regular Season":
+        if season_type == "Regular Season":
             return _leaderboard_bbref(category, requested_season, per_mode, top_n)
         return {
             "error": f"No leaderboard data available for {requested_season} or fallback seasons.",
@@ -1361,18 +1604,26 @@ def get_leaderboard(
             "blk":         round(_safe_float(r.get("BLK")), 1),
             "fg_pct":      round(_safe_float(r.get("FG_PCT")) * 100, 1),
             "fg3_pct":     round(_safe_float(r.get("FG3_PCT")) * 100, 1),
-            "stat_value":  round(_safe_float(r.get(category, r.get("PTS"))), 1),
+            "fg3a":        round(_safe_float(r.get("FG3A")), 1),
+            # Percentage stats arrive as 0.0–1.0; multiply ×100 so the frontend
+            # always receives a 0–100 value and can append "%" directly.
+            "stat_value":  round(
+                _safe_float(r.get(category, r.get("PTS"))) * (100 if is_percentage else 1),
+                1
+            ),
         })
 
     return {
-        "stat_category": category,
-        "stat_label":    stat,
-        "season":        used_season,
+        "stat_category":  category,
+        "stat_label":     stat,
+        "season":         used_season,
         "season_requested": requested_season,
         "season_fallback_used": used_season != requested_season,
         "season_options": season_chain,
-        "season_type":   season_type,
-        "per_mode":      per_mode,
-        "leaders":       leaders,
-        "count":         len(leaders),
+        "season_type":    season_type,
+        "per_mode":       per_mode,
+        "min_gp":         min_gp,
+        "is_percentage":  is_percentage,
+        "leaders":        leaders,
+        "count":          len(leaders),
     }

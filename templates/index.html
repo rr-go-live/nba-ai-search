@@ -70,8 +70,11 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .opp-name { font-family: 'Barlow Condensed', sans-serif; font-size: 2.4rem; font-weight: 800; color: var(--tp); line-height: 1; }
 .vs-badge { font-family: 'Barlow Condensed', sans-serif; font-size: .9rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px; align-self: center; }
 .meta-row { display: flex; gap: 18px; margin-top: 6px; flex-wrap: wrap; }
+.meta-row-2 { margin-top: 4px; opacity: 0.7; }
 .meta-tag { font-size: .68rem; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
 .meta-tag span { color: var(--text); }
+.meta-tag-current span { color: var(--muted); font-style: italic; }
+.meta-team-current { color: var(--muted); font-size: .68rem; letter-spacing: .1em; }
 
 /* Insight */
 .insight-block { background: var(--surface); border-left: 3px solid var(--tp); padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 28px; font-family: 'Fraunces', serif; font-size: 1rem; line-height: 1.65; }
@@ -415,6 +418,28 @@ function hsUrl(id) {
   return 'https://cdn.nba.com/headshots/nba/latest/1040x760/' + id + '.png';
 }
 
+// Replace a broken headshot <img> with an initial circle using the player name
+// stored in the closest parent that has data-player-name, or a fallback "?".
+function onHsError(el, name) {
+  var initial = (name || '?').trim().charAt(0).toUpperCase();
+  var bg = el.style.borderColor || '#555';
+  var size = el.offsetWidth || parseInt(el.style.width) || 34;
+  var fs   = Math.round(size * 0.42);
+  var wrap = document.createElement('div');
+  wrap.style.cssText = el.style.cssText;
+  wrap.style.display = 'flex';
+  wrap.style.alignItems = 'center';
+  wrap.style.justifyContent = 'center';
+  wrap.style.background = '#2a2a2a';
+  wrap.style.borderRadius = '50%';
+  wrap.style.flexShrink = '0';
+  wrap.style.fontSize = fs + 'px';
+  wrap.style.fontWeight = '700';
+  wrap.style.color = bg;
+  wrap.textContent = initial;
+  if (el.parentNode) el.parentNode.replaceChild(wrap, el);
+}
+
 function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 }
@@ -516,30 +541,59 @@ function renderResults(d) {
 }
 
 // ─── Player header ───────────────────────────────────────────────────────────
-function playerHeaderHtml(player, rightHtml, extras) {
+function playerHeaderHtml(player, rightHtml, extras, opts) {
+  opts = opts || {};
   extras = extras || [];
   var hs = player.headshot_url || hsUrl(player.player_id);
   var metas = '';
-  if (player.team) metas += '<div class="meta-tag">Team <span>' + player.team + '</span></div>';
-  if (player.position) metas += '<div class="meta-tag">Pos <span>' + player.position + '</span></div>';
-  extras.forEach(function(e) { metas += e; });
+  if (opts.metaOverride !== undefined) {
+    // Caller supplies the full first-row content
+    metas = opts.metaOverride;
+  } else {
+    if (player.team || player.team_abbr) {
+      var teamLabel = player.team || player.team_abbr;
+      metas += '<div class="meta-tag">Team <span>' + teamLabel + '</span></div>';
+    }
+    if (player.position) metas += '<div class="meta-tag">Pos <span>' + player.position + '</span></div>';
+    extras.forEach(function(e) { metas += e; });
+  }
+  var secondRow = opts.secondRow
+    ? '<div class="meta-row meta-row-2">' + opts.secondRow + '</div>'
+    : '';
   return '<div class="player-header">'
     + '<img class="phs" src="' + hs + '" onerror="this.style.display=\'none\'" alt="' + (player.name || '') + '">'
     + '<div style="flex:1"><div class="player-name">' + (player.name || '') + '</div>'
-    + '<div class="meta-row">' + metas + '</div></div>'
+    + '<div class="meta-row">' + metas + '</div>'
+    + secondRow
+    + '</div>'
     + (rightHtml || '')
     + '</div>';
 }
 
 function insightHtml(text) {
-  return text ? '<div class="insight-block">' + text + '</div>' : '';
+  if (!text) return '';
+  // Convert common markdown to HTML so bold/bullets render properly
+  var html = text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')  // escape first
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')                    // **bold**
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')                                 // *italic*
+    .replace(/^[\*\-] (.+)$/gm, '<li>$1</li>')                           // * bullet / - bullet
+    .replace(/(<li>.*<\/li>)/s, '<ul style="margin:.5em 0 .5em 1.2em;padding:0">$1</ul>')
+    .replace(/\n\n+/g, '</p><p style="margin:.6em 0 0">')                // paragraphs
+    .replace(/\n/g, ' ');                                                  // soft newlines
+  return '<div class="insight-block"><p style="margin:0">' + html + '</p></div>';
 }
 
 // ─── vs_team ─────────────────────────────────────────────────────────────────
 function renderVsTeam(d, c) {
-  var avg = d.averages || {};
-  var splits = d.season_splits || [];
-  var log = d.game_log || [];
+  var rsAvg    = d.averages        || {};
+  var rsSplits = d.season_splits   || [];
+  var rsLog    = d.game_log        || [];
+  var poAvg    = d.playoff_averages  || {};
+  var poSplits = d.playoff_splits    || [];
+  var poLog    = d.playoff_game_log  || [];
+  var hasPlayoffs = !!(d.playoff_averages && Object.keys(d.playoff_averages).length > 0);
+
   // Opponent name uses opponent's own team color
   var oppAbbr = d.opponent ? d.opponent.abbreviation : '';
   var oppColor = teamColor(oppAbbr);
@@ -548,20 +602,50 @@ function renderVsTeam(d, c) {
     + (d.opponent ? (d.opponent.name || d.opponent.abbreviation || '') : '')
     + '</div>';
 
+  var toggleHtml = hasPlayoffs
+    ? '<div style="margin-bottom:22px;display:flex;align-items:center"><div class="toggle-btns" id="vs-mode-toggle" style="width:fit-content">'
+      + '<button class="on" data-mode="rs">Regular Season</button>'
+      + '<button data-mode="po">Playoffs</button>'
+      + '</div></div>'
+    : '';
+
   c.innerHTML = playerHeaderHtml(d.player, rightHtml, [
     '<div class="meta-tag">Seasons <span>' + (d.season_range || '') + '</span></div>',
-    '<div class="meta-tag">Type <span>' + (d.season_type || 'Regular Season') + '</span></div>'
+    '<div class="meta-tag">Type <span id="vs-type-label">' + (hasPlayoffs ? 'RS' : (d.season_type || 'Regular Season')) + '</span></div>'
   ])
   + insightHtml(d.insight)
+  + toggleHtml
   + '<div class="stat-grid" id="sg"></div>'
   + '<div class="donuts-row" id="donuts"></div>'
   + '<div class="charts-row" id="charts-area"></div>'
   + '<div id="log-area"></div>';
 
-  buildStatCards('sg', avg);
-  buildDonuts('donuts', avg, null);
-  if (splits.length >= 2) buildCharts('charts-area', splits, avg, log, oppAbbr);
-  buildGameLog('log-area', log, null);
+  function renderMode(mode) {
+    var avg    = mode === 'po' ? poAvg    : rsAvg;
+    var splits = mode === 'po' ? poSplits : rsSplits;
+    var log    = mode === 'po' ? poLog    : rsLog;
+    buildStatCards('sg', avg);
+    buildDonuts('donuts', avg, null);
+    document.getElementById('charts-area').innerHTML = '';
+    if (splits.length >= 2) buildCharts('charts-area', splits, avg, log, oppAbbr);
+    buildGameLog('log-area', log, null);
+  }
+
+  renderMode('rs');
+
+  if (hasPlayoffs) {
+    var tgl = document.getElementById('vs-mode-toggle');
+    tgl.addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-mode]');
+      if (!btn) return;
+      tgl.querySelectorAll('button').forEach(function(b) { b.classList.remove('on'); });
+      btn.classList.add('on');
+      var mode = btn.dataset.mode;
+      var lbl = document.getElementById('vs-type-label');
+      if (lbl) lbl.textContent = mode === 'po' ? 'Playoffs' : 'RS';
+      renderMode(mode);
+    });
+  }
 }
 
 // ─── conditional ─────────────────────────────────────────────────────────────
@@ -585,9 +669,33 @@ function renderConditional(d, c) {
   var primLbl = (allActive ? 'WITH ' : 'WITHOUT ') + condNames + ' (' + (d.primary_games || 0) + ' games)';
   var cmpLbl  = (allActive ? 'WITHOUT ' : 'WITH ')  + condNames + ' (' + (d.comparison_games || 0) + ' games)';
 
-  c.innerHTML = playerHeaderHtml(d.player, null, [
-    '<div class="meta-tag">Seasons <span>' + (d.season_range || '') + '</span></div>'
-  ])
+  // ── Two-line header ──────────────────────────────────────────────────────
+  // Line 1: OKC  GUARD  w/ KD  2008-09 TO 2015-16
+  // Line 2: CURRENT: Sacramento Kings  (only when era team ≠ current team)
+  var condShortNames = condPlayers.map(function(p) { return lastName(p.name); }).join(' & ');
+  var line1 = '';
+  if (d.player.team_abbr) {
+    line1 += '<div class="meta-tag"><span>' + d.player.team_abbr + '</span></div>';
+  }
+  if (d.player.position) {
+    line1 += '<div class="meta-tag"><span>' + d.player.position + '</span></div>';
+  }
+  if (condShortNames) {
+    line1 += '<div class="meta-tag">w/ <span>' + condShortNames + '</span></div>';
+  }
+  if (d.season_range) {
+    line1 += '<div class="meta-tag"><span>' + d.season_range + '</span></div>';
+  }
+
+  var line2 = '';
+  var eraTm  = d.player.team_abbr;
+  var nowTm  = d.player.current_team_abbr;
+  var nowFull = d.player.current_team || nowTm || '';
+  if (nowTm && nowTm !== eraTm) {
+    line2 = '<div class="meta-tag meta-tag-current">Current <span>' + nowFull + '</span></div>';
+  }
+
+  c.innerHTML = playerHeaderHtml(d.player, null, [], { metaOverride: line1, secondRow: line2 })
   + (pills ? '<div class="cond-row">' + pills + '</div>' : '')
   + insightHtml(d.insight)
   + '<div class="split-grid">'
@@ -673,7 +781,7 @@ function renderH2H(d, c) {
     +     '<div class="h2h-head">'
     +       '<img class="h2h-hs" src="' + pHs + '" style="border:2px solid ' + pCol + ';border-radius:50%" onerror="this.style.display=\'none\'" alt="' + (p.name || '') + '">'
     +       '<div><div class="h2h-pname">' + (p.name || '') + '</div>'
-    +       '<div class="h2h-team-lbl">' + (p.team || '') + ' &middot; ' + (d.player_games || 0) + ' games</div></div>'
+    +       '<div class="h2h-team-lbl">' + (p.team || '') + '</div></div>'
     +     '</div>'
     +     statsHtml(pAvg, oAvg, pCol)
     +   '</div>'
@@ -682,7 +790,7 @@ function renderH2H(d, c) {
     +     '<div class="h2h-head">'
     +       '<img class="h2h-hs" src="' + oHs + '" style="border:2px solid ' + oCol + ';border-radius:50%" onerror="this.style.display=\'none\'" alt="' + (op.name || '') + '">'
     +       '<div><div class="h2h-pname">' + (op.name || '') + '</div>'
-    +       '<div class="h2h-team-lbl">' + (op.team || '') + ' &middot; ' + (d.opponent_games || 0) + ' games</div></div>'
+    +       '<div class="h2h-team-lbl">' + (op.team || '') + '</div></div>'
     +     '</div>'
     +     statsHtml(oAvg, pAvg, oCol)
     +   '</div>'
@@ -1393,15 +1501,34 @@ function fetchH2HMatrix() {
   .then(function(data) {
     var body = document.getElementById('h2h-matrix-body');
     if (!body) return;
-    var pairs = data.pairs || [];
-    if (!pairs.length) {
-      body.innerHTML = '<div style="color:var(--muted);font-size:.75rem">No H2H data found.</div>';
+    var isPlayoffs = players.length > 0 && (players[0].season_type || '') === 'Playoffs';
+    // All players share the same single season (e.g., everyone is "2018 Playoffs")
+    var allSameSeason = players.every(function(p) {
+      return p.season_from === players[0].season_from && p.season_to === players[0].season_to;
+    });
+
+    // Cross-era playoff compares (different seasons) → H2H doesn't apply; hide the section
+    if (isPlayoffs && !allSameSeason) {
+      var card = body.parentElement;
+      if (card) card.style.display = 'none';
       return;
     }
 
-    // Build a color lookup from the embedded player list
-    var colorMap = {};
-    players.forEach(function(p) { colorMap[p.player_id] = p.color; });
+    var pairs = (data.pairs || []).filter(function(p) { return (p.gp || 0) > 0; });
+    if (!pairs.length) {
+      body.innerHTML = '<div style="color:var(--muted);font-size:.75rem">'
+        + 'No head-to-head matchups found — these players did not face each other in the queried era.'
+        + '</div>';
+      return;
+    }
+
+    // Build color + name lookup from the embedded player list
+    var playerMap = {};
+    players.forEach(function(p) { playerMap[p.player_id] = p; });
+
+    // Size grid columns based on pair count: 1 pair = full width, 2-3 = 2 cols, 4+ = 3 cols
+    var cols = pairs.length === 1 ? 1 : pairs.length <= 3 ? 2 : 3;
+    body.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
 
     body.innerHTML = pairs.map(function(pair) {
       var gp    = pair.gp || 0;
@@ -1409,55 +1536,88 @@ function fetchH2HMatrix() {
       var aLoss = pair.a_losses || 0;
       var bWins = pair.b_wins  || 0;
       var bLoss = pair.b_losses || 0;
-      var colA  = colorMap[pair.player_a_id] || '#f7941d';
-      var colB  = colorMap[pair.player_b_id] || '#4a9fce';
-      var nameA = pair.player_a_name || 'Player A';
-      var nameB = pair.player_b_name || 'Player B';
+      var pA    = playerMap[pair.player_a_id] || {};
+      var pB    = playerMap[pair.player_b_id] || {};
+      var colA  = pA.color || '#f7941d';
+      var colB  = pB.color || '#4a9fce';
+      // Use clean names from playerMap (LLM may append "Career" etc to pair.player_a_name)
+      var nameA  = pA.name || pair.player_a_name || 'Player A';
+      var nameB  = pB.name || pair.player_b_name || 'Player B';
+      // Label for sub-text: prefer explicit label, fall back to name
+      var labelA = pA.label || nameA;
+      var labelB = pB.label || nameB;
       var shortA = nameA.split(' ').pop();
       var shortB = nameB.split(' ').pop();
 
       // Show the winning player's perspective; if tied, show A (arbitrary)
-      var tied    = aWins === bWins;
+      var tied      = aWins === bWins;
       var winnerIsA = tied || aWins > bWins;
-      var winCol  = winnerIsA ? colA : colB;
-      var loseCol = winnerIsA ? colB : colA;
-      var winName = winnerIsA ? nameA : nameB;
-      var loseName= winnerIsA ? nameB : nameA;
-      var wins    = winnerIsA ? aWins : bWins;
-      var losses  = winnerIsA ? aLoss : bLoss;
-      var winPct  = gp > 0 ? (wins / gp * 100) : 0;
-      var losePct = 100 - winPct;
-      var winShort = winnerIsA ? shortA : shortB;
-      var loseShort= winnerIsA ? shortB : shortA;
+      var winCol    = winnerIsA ? colA : colB;
+      var loseCol   = winnerIsA ? colB : colA;
+      var winName   = winnerIsA ? nameA  : nameB;
+      var winLabel  = winnerIsA ? labelA : labelB;
+      var loseName  = winnerIsA ? nameB  : nameA;
+      var winShort  = winnerIsA ? shortA : shortB;
+      var loseShort = winnerIsA ? shortB : shortA;
 
-      return '<div style="background:var(--surface2);border-radius:10px;padding:16px 18px">'
+      // Playoffs: show series record as primary, game record as sub-label
+      var aSeriesW = pair.a_series_wins   || 0;
+      var aSeriesL = pair.a_series_losses || 0;
+      var bSeriesW = pair.b_series_wins   || 0;
+      var bSeriesL = pair.b_series_losses || 0;
+      // Same-year playoffs → show game record (they met in a specific series this year)
+      // Cross-era playoffs already hidden; series record only for career-span playoff compares
+      var useSeriesRecord = isPlayoffs && !allSameSeason && pair.is_playoffs && (aSeriesW + aSeriesL) > 0;
+
+      var primaryWins, primaryLoss, unitLabel, subLabel;
+      if (useSeriesRecord) {
+        primaryWins = winnerIsA ? aSeriesW : bSeriesW;
+        primaryLoss = winnerIsA ? aSeriesL : bSeriesL;
+        unitLabel   = 'SERIES';
+        var gameWins = winnerIsA ? aWins : bWins;
+        var gameLoss = winnerIsA ? aLoss : bLoss;
+        var gamePct  = gp > 0 ? (gameWins / gp * 100).toFixed(1) : '0.0';
+        subLabel = winName + ' &bull; ' + gameWins + '-' + gameLoss + ' games &bull; ' + gamePct + '%';
+      } else {
+        primaryWins = winnerIsA ? aWins : bWins;
+        primaryLoss = winnerIsA ? aLoss : bLoss;
+        unitLabel   = '';
+        var winPct  = gp > 0 ? (primaryWins / gp * 100) : 0;
+        subLabel = winLabel + ' &bull; ' + gp + ' games &bull; ' + winPct.toFixed(1) + '%';
+      }
+
+      var totalPrimary = primaryWins + primaryLoss;
+      var barWinPct  = totalPrimary > 0 ? (primaryWins / totalPrimary * 100) : 50;
+      var barLosePct = 100 - barWinPct;
+
+      return '<div style="background:var(--surface2);border-radius:10px;padding:20px 24px;text-align:center">'
         // Header
-        + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.58rem;font-weight:700;'
-        +   'letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">'
+        + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.65rem;font-weight:700;'
+        +   'letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">'
         +   '<span style="color:' + winCol + '">' + winShort + '</span>'
         +   ' <span style="opacity:.5">vs</span> '
         +   '<span style="color:' + loseCol + '">' + loseShort + '</span>'
         + '</div>'
-        // Winner record — large, centered
-        + '<div style="margin-bottom:6px">'
-        +   '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:2.2rem;font-weight:900;'
+        // Primary record — larger, centered
+        + '<div style="margin-bottom:8px;display:flex;align-items:baseline;justify-content:center;gap:10px">'
+        +   '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:3rem;font-weight:900;'
         +     'line-height:1;color:' + winCol + '">'
-        +     wins + '<span style="font-size:1.1rem;opacity:.7">W</span>'
-        +     '&ndash;' + losses + '<span style="font-size:1.1rem;opacity:.7">L</span>'
+        +     primaryWins + '<span style="font-size:1.4rem;opacity:.7">W</span>'
+        +     '&ndash;' + primaryLoss + '<span style="font-size:1.4rem;opacity:.7">L</span>'
         +   '</span>'
-        +   (tied ? ' <span style="font-size:.6rem;color:var(--muted);vertical-align:middle">TIED</span>' : '')
+        +   (unitLabel ? '<span style="font-size:.65rem;font-weight:700;letter-spacing:.1em;'
+        +     'text-transform:uppercase;color:' + winCol + ';opacity:.7">' + unitLabel + '</span>' : '')
+        +   (tied ? '<span style="font-size:.65rem;color:var(--muted)">TIED</span>' : '')
         + '</div>'
-        + '<div style="font-size:.58rem;color:var(--muted);margin-bottom:10px">'
-        +   winName + ' &bull; ' + gp + ' games &bull; ' + winPct.toFixed(1) + '%'
-        + '</div>'
-        // Split bar with hover tooltips showing W/L counts
-        + '<div style="height:7px;border-radius:99px;overflow:hidden;display:flex;cursor:default">'
-        +   '<div title="' + winName + ': ' + wins + 'W (' + winPct.toFixed(1) + '%)"'
-        +     ' style="flex:' + winPct.toFixed(2) + ';background:' + winCol + ';'
-        +     'transition:opacity .15s" onmouseenter="this.style.opacity=\'.75\'" onmouseleave="this.style.opacity=\'1\'"></div>'
-        +   '<div title="' + loseName + ': ' + losses + 'W (' + losePct.toFixed(1) + '%)"'
-        +     ' style="flex:' + losePct.toFixed(2) + ';background:' + loseCol + ';opacity:.35;'
-        +     'transition:opacity .15s" onmouseenter="this.style.opacity=\'.6\'" onmouseleave="this.style.opacity=\'.35\'"></div>'
+        + '<div style="font-size:.62rem;color:var(--muted);margin-bottom:14px">' + subLabel + '</div>'
+        // Split bar — taller with stronger hover
+        + '<div style="height:9px;border-radius:99px;overflow:hidden;display:flex;cursor:default">'
+        +   '<div title="' + winName + ': ' + primaryWins + 'W"'
+        +     ' style="flex:' + barWinPct.toFixed(2) + ';background:' + winCol + ';'
+        +     'transition:all .2s" onmouseenter="this.style.opacity=\'.65\';this.style.height=\'13px\'" onmouseleave="this.style.opacity=\'1\';this.style.height=\'9px\'"></div>'
+        +   '<div title="' + loseName + ': ' + primaryLoss + 'W"'
+        +     ' style="flex:' + barLosePct.toFixed(2) + ';background:' + loseCol + ';opacity:.3;'
+        +     'transition:all .2s" onmouseenter="this.style.opacity=\'.7\';this.style.height=\'13px\'" onmouseleave="this.style.opacity=\'.3\';this.style.height=\'9px\'"></div>'
         + '</div>'
         + '</div>';
     }).join('');
@@ -1487,29 +1647,41 @@ function renderCompare(d, c) {
   var colors = resolveCompareColors(players);
 
   // ── Header ──────────────────────────────────────────────────────────────
-  // Colorize title: replace each player's name with a colored span.
-  // Works for both 2-player "vs" titles and multi-player comma titles.
-  var rawTitle     = d.title || 'Comparison';
-  var coloredTitle = rawTitle;
-  // Replace longest names first to avoid partial matches (e.g. "James" inside "LeBron James")
+  // Build colored title safely: split on player names first (keeping track of
+  // which segments are plain text vs already-HTML), then apply vs/comma dimming
+  // ONLY to the plain-text segments. This prevents any regex from ever running
+  // on previously-inserted HTML and corrupting style="color:..." attributes.
+  var rawTitle = d.title || 'Comparison';
+  // Sort longest names first to avoid partial matches ("James" inside "LeBron James")
   var sortedPlayers = players.slice().sort(function(a, b) {
     return (b.name || '').length - (a.name || '').length;
   });
+  // Each segment is either a plain string or {html: '...'} (already rendered)
+  var titleSegs = [rawTitle];
   sortedPlayers.forEach(function(p) {
     var idx = players.indexOf(p);
     var col = colors[idx] || colors[0];
-    if (p.name) {
-      coloredTitle = coloredTitle.replace(
-        p.name,
-        '<span style="color:' + col + '">' + p.name + '</span>'
-      );
-    }
+    if (!p.name) return;
+    var spanHtml = '<span style="color:' + col + '">' + p.name + '</span>';
+    var next = [];
+    titleSegs.forEach(function(seg) {
+      if (typeof seg !== 'string') { next.push(seg); return; }
+      var pos = seg.indexOf(p.name);
+      if (pos === -1) { next.push(seg); return; }
+      if (pos > 0) next.push(seg.slice(0, pos));
+      next.push({ html: spanHtml });
+      var after = seg.slice(pos + p.name.length);
+      if (after) next.push(after);
+    });
+    titleSegs = next;
   });
-  // Dim the "vs" / commas / colons so player names pop
-  coloredTitle = coloredTitle
-    .replace(/\bvs\.?\b/gi, '<span style="color:var(--muted);font-weight:400">vs</span>')
-    .replace(/,/g, '<span style="color:var(--muted);font-weight:400">,</span>')
-    .replace(/:/, '<span style="color:var(--muted);font-weight:400">:</span>');
+  // Apply vs/comma dimming only to the remaining plain-text segments
+  var coloredTitle = titleSegs.map(function(seg) {
+    if (typeof seg !== 'string') return seg.html;
+    return seg
+      .replace(/\bvs\.?\b/gi, '<span style="color:var(--muted);font-weight:400">vs</span>')
+      .replace(/,/g, '<span style="color:var(--muted);font-weight:400">,</span>');
+  }).join('');
 
   var html = '<div style="padding:28px 0 20px;border-bottom:1px solid var(--border);margin-bottom:28px">'
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.7rem;font-weight:700;'
@@ -1539,6 +1711,7 @@ function renderCompare(d, c) {
       +       'line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (p.name || '') + '</div>'
       +     '<div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-top:2px">'
       +       (p.label || p.season_range || '') + '</div>'
+      +     (p.team ? '<div style="font-size:.58rem;color:var(--muted);margin-top:1px">' + p.team + '</div>' : '')
       +     (seriesCount ? '<div style="font-size:.6rem;color:' + col + ';margin-top:2px">'
       +       seriesCount + ' series</div>' : '')
       +   '</div>'
@@ -1640,9 +1813,14 @@ function renderCompare(d, c) {
   // Player metadata stored as a JS variable — set directly (not via innerHTML script tag,
   // which browsers do not execute).  Must be assigned before c.innerHTML below.
   window._compareH2HPlayers = players.map(function(p, i) {
+    // Strip any appended label words (e.g. "Nikola Jokic Career" → "Nikola Jokic")
+    // by keeping only the base player name from the player object's name field,
+    // before any label suffix the LLM may have added.
+    var cleanName = (p.name || '').replace(/\s*(career|playoffs|\d{4}-\d{2}.*)/i, '').trim() || p.name || '';
     return {
       player_id:   p.player_id,
-      name:        p.name || '',
+      name:        cleanName,
+      label:       p.label || '',
       season_from: p.season_from || '',
       season_to:   p.season_to   || '',
       season_type: p.season_type || 'Regular Season',
@@ -1838,100 +2016,187 @@ function playoffGameLogHtml(rows, accentColor) {
 
 // ─── renderLeaderboard ────────────────────────────────────────────────────────
 function renderLeaderboard(d, c) {
-  var leaders = d.leaders || [];
-  var statLbl = d.stat_label || d.stat_category || 'PTS';
-  var fillColor = getComputedStyle(document.documentElement).getPropertyValue('--tp').trim() || '#f7941d';
+  var origLeaders = d.leaders || [];
+  var statLbl     = d.stat_label || d.stat_category || 'PTS';
+  var origMode    = (d.per_mode === 'Totals') ? 'totals' : 'pg';
+  var lbMode      = origMode;   // current display mode; toggled by pill
 
-  var teams = Array.from(new Set(leaders.map(function(r) { return r.team || 'TOT'; }))).sort();
+  // Convert a leaders array between modes
+  function convertLeaders(base, toMode) {
+    if (toMode === origMode) return base.map(function(r) { return Object.assign({}, r); });
+    return base.map(function(r) {
+      var gp = r.gp || 1;
+      function conv(v) { return toMode === 'totals' ? (v * gp) : (v / gp); }
+      return Object.assign({}, r, {
+        stat_value: conv(r.stat_value),
+        pts: conv(r.pts), reb: conv(r.reb),
+        ast: conv(r.ast), stl: conv(r.stl), blk: conv(r.blk),
+      });
+    });
+  }
+
+  // Re-sort and re-rank after mode conversion
+  function ranked(arr) {
+    var sorted = arr.slice().sort(function(a, b) { return b.stat_value - a.stat_value; });
+    return sorted.map(function(r, i) { return Object.assign({}, r, { rank: i + 1 }); });
+  }
+
+  var PCT_CATS = ['FG3_PCT','FG_PCT','FT_PCT'];
+  var isPct = !!d.is_percentage || PCT_CATS.indexOf(d.stat_category) !== -1;
+
+  // Format a stat value based on current display mode
+  function fmtStat(v) {
+    if (isPct) return fmt(v) + '%';
+    return lbMode === 'totals' ? fmtInt(Math.round(v)) : fmt(v);
+  }
+
+  // Aux columns (pts/reb/ast etc.) are never percentages — always use fmt
+  function fmtAux(v) {
+    return lbMode === 'totals' ? fmtInt(Math.round(v)) : fmt(v);
+  }
+
+  var teams = Array.from(new Set(origLeaders.map(function(r) { return r.team || 'TOT'; }))).sort();
   var fallbackNote = d.season_fallback_used
     ? '<div style="font-size:.68rem;color:#9dadc8;margin-top:8px">No data yet for ' + (d.season_requested || d.season) + '. Showing latest available season: <span style="color:var(--tp)">' + (d.season || '') + '</span>.</div>'
     : '';
 
+  // Hide Totals/Per Game toggle for percentage stats (pct is pct — no meaningful toggle)
+  var modeToggle = isPct ? '' : (
+    '<div class="toggle-btns" id="lb-mode-toggle" style="width:fit-content">'
+    + '<button class="' + (origMode === 'totals' ? 'on' : '') + '" data-lbmode="totals">Totals</button>'
+    + '<button class="' + (origMode === 'pg'     ? 'on' : '') + '" data-lbmode="pg">Per Game</button>'
+    + '</div>'
+  );
+
   var html = '<div style="padding:28px 0 20px;border-bottom:1px solid var(--border);margin-bottom:20px">'
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.7rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Leaderboard</div>'
+    + '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">'
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:2.2rem;font-weight:900;line-height:1.1">' + (d.title || statLbl + ' Leaders') + '</div>'
-    + '<div style="font-size:.75rem;color:var(--muted);margin-top:6px">' + (d.season || '') + ' &middot; ' + (d.season_type || '') + ' &middot; ' + (d.per_mode === 'Totals' ? 'Totals' : 'Per Game') + '</div>'
+    + modeToggle
+    + '</div>'
+    + '<div style="font-size:.75rem;color:var(--muted);margin-top:6px">' + (d.season || '') + ' &middot; ' + (d.season_type || '') + ' &middot; <span id="lb-mode-label">' + (origMode === 'totals' ? 'Totals' : 'Per Game') + '</span></div>'
     + fallbackNote
     + '</div>'
     + insightHtml(d.insight);
 
-  var top3 = leaders.slice(0, 3);
-  if (top3.length) {
-    html += '<div id="lb-top3" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:18px">';
-    top3.forEach(function(row, i) {
-      var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
-      var tColor = teamColor(row.team);
-      html += '<div style="background:var(--surface);border:1px solid var(--border);border-top:3px solid ' + tColor + ';border-radius:12px;padding:12px;display:flex;gap:10px;align-items:center">'
-        + '<img src="' + (row.headshot_url || hsUrl(row.player_id)) + '" onerror="this.style.display=\'none\'" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid ' + tColor + '">'
-        + '<div style="min-width:0"><div style="font-size:.65rem;color:var(--muted)">' + medal + ' #' + row.rank + '</div>'
-        + '<div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (row.name || '') + '</div>'
-        + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;color:' + tColor + ';line-height:1">' + fmt(row.stat_value) + '</div></div></div>';
-    });
-    html += '</div>';
-  }
+  html += '<div id="lb-top3" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:18px"></div>';
 
   html += '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:16px">'
     + '<label style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Team<br><select id="lb-team-filter" style="margin-top:4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px"><option value="all">All</option>'
     + teams.map(function(t){ return '<option value="' + t + '">' + t + '</option>'; }).join('')
     + '</select></label>'
     + '<label style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Min GP: <span id="lb-gp-val">0</span><br><input id="lb-gp-filter" type="range" min="0" max="82" value="0" style="margin-top:8px"></label>'
-    + '<label style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Top N: <span id="lb-topn-val">' + Math.min(10, leaders.length) + '</span><br><input id="lb-topn-filter" type="range" min="3" max="' + Math.max(3, leaders.length) + '" value="' + Math.min(10, leaders.length) + '" style="margin-top:8px"></label>'
+    + '<label style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Top N: <span id="lb-topn-val">' + Math.min(10, origLeaders.length) + '</span><br><input id="lb-topn-filter" type="range" min="3" max="' + Math.max(3, origLeaders.length) + '" value="' + Math.min(10, origLeaders.length) + '" style="margin-top:8px"></label>'
     + '</div>';
 
   html += '<div class="charts-row"><div class="chart-card full">'
-    + '<div class="chart-title" id="lb-chart-title">' + statLbl.toUpperCase() + ' — Top ' + leaders.length + '</div>'
+    + '<div class="chart-title" id="lb-chart-title">' + statLbl.toUpperCase() + ' — Top ' + origLeaders.length + '</div>'
     + '<div class="chart-wrap" style="height:260px"><canvas id="chart-lb"></canvas></div>'
     + '</div></div>';
 
   html += '<div style="overflow-x:auto;margin-bottom:32px">'
     + '<table style="width:100%;border-collapse:collapse;font-size:.8rem">'
-    + '<thead><tr>'
-    + ['#','Player','Team','GP',statLbl.toUpperCase(),'PPG','RPG','APG','SPG','BPG','FG%','3P%'].map(function(h) {
-        return '<th style="text-align:' + (h==='Player'?'left':'right') + ';padding:8px 10px;color:var(--muted);font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;border-bottom:1px solid var(--border)">' + h + '</th>';
-      }).join('')
-    + '</tr></thead><tbody id="lb-tbody"></tbody></table></div>';
+    + '<thead id="lb-thead"><tr></tr></thead><tbody id="lb-tbody"></tbody></table></div>';
 
   c.innerHTML = html;
+
+  // ── Shared column visibility flags (computed once, used in header + rows) ──
+  var pctLabelMap = { 'FG3_PCT': '3P%', 'FG_PCT': 'FG%', 'FT_PCT': 'FT%' };
+  var dupAuxMap   = { 'PTS': 'PPG', 'REB': 'RPG', 'AST': 'APG', 'STL': 'SPG', 'BLK': 'BPG' };
+  var dupAux  = dupAuxMap[d.stat_category] || null;
+  var showPts = !dupAux || dupAux !== 'PPG';
+  var showReb = !dupAux || dupAux !== 'RPG';
+  var showAst = !dupAux || dupAux !== 'APG';
+  var showStl = !dupAux || dupAux !== 'SPG';
+  var showBlk = !dupAux || dupAux !== 'BPG';
+  var is3pt   = d.stat_category === 'FG3_PCT';
+
+  function buildCols() {
+    var statCol = isPct
+      ? (pctLabelMap[d.stat_category] || statLbl.toUpperCase() + '%')
+      : (lbMode === 'totals' ? statLbl.toUpperCase() : statLbl.toUpperCase() + '/G');
+    var auxPts = lbMode === 'totals' ? 'PTS' : 'PPG';
+    var auxReb = lbMode === 'totals' ? 'REB' : 'RPG';
+    var auxAst = lbMode === 'totals' ? 'AST' : 'APG';
+    var auxStl = lbMode === 'totals' ? 'STL' : 'SPG';
+    var auxBlk = lbMode === 'totals' ? 'BLK' : 'BPG';
+    var c = ['#', 'Player', 'Team', 'GP', statCol];
+    if (is3pt)   c.push('3PA');
+    if (showPts) c.push(auxPts);
+    if (showReb) c.push(auxReb);
+    if (showAst) c.push(auxAst);
+    if (showStl) c.push(auxStl);
+    if (showBlk) c.push(auxBlk);
+    c.push('FG%', '3P%');
+    return c;
+  }
+
+  function renderHeader() {
+    var thead = document.getElementById('lb-thead');
+    if (!thead) return;
+    var cols = buildCols();
+    thead.innerHTML = '<tr>'
+      + cols.map(function(h) {
+          return '<th style="text-align:' + (h==='Player'?'left':'right') + ';padding:8px 10px;color:var(--muted);font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;border-bottom:1px solid var(--border)">' + h + '</th>';
+        }).join('')
+      + '</tr>';
+  }
+
+  function renderTop3(top3) {
+    var el = document.getElementById('lb-top3');
+    if (!el) return;
+    if (!top3.length) { el.innerHTML = ''; return; }
+    el.innerHTML = top3.map(function(row, i) {
+      var medal  = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
+      var tColor = teamColor(row.team);
+      return '<div style="background:var(--surface);border:1px solid var(--border);border-top:3px solid ' + tColor + ';border-radius:12px;padding:12px;display:flex;gap:10px;align-items:center">'
+        + '<img src="' + (row.headshot_url || hsUrl(row.player_id)) + '" onerror="onHsError(this,\'' + (row.name || '').replace(/'/g,'') + '\')" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid ' + tColor + '">'
+        + '<div style="min-width:0"><div style="font-size:.65rem;color:var(--muted)">' + medal + ' #' + row.rank + '</div>'
+        + '<div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (row.name || '') + '</div>'
+        + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;color:' + tColor + ';line-height:1">' + fmtStat(row.stat_value) + '</div></div></div>';
+    }).join('');
+  }
 
   function renderRows(filtered) {
     var tbody = document.getElementById('lb-tbody');
     if (!tbody) return;
     if (!filtered.length) {
-      tbody.innerHTML = '<tr><td colspan="12" style="padding:14px 10px;color:var(--muted)">No players match current filters.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="' + buildCols().length + '" style="padding:14px 10px;color:var(--muted)">No players match current filters.</td></tr>';
       return;
     }
-    tbody.innerHTML = filtered.map(function(row, idx) {
-      var rankColor = row.rank === 1 ? '#FFD700' : row.rank === 2 ? '#C0C0C0' : row.rank === 3 ? '#CD7F32' : 'var(--muted)';
-      var hs = row.headshot_url || hsUrl(row.player_id);
+    tbody.innerHTML = filtered.map(function(row) {
+      var rankColor    = row.rank === 1 ? '#FFD700' : row.rank === 2 ? '#C0C0C0' : row.rank === 3 ? '#CD7F32' : 'var(--muted)';
+      var hs           = row.headshot_url || hsUrl(row.player_id);
       var rowTeamColor = teamColor(row.team);
       return '<tr style="border-bottom:1px solid rgba(255,255,255,.03)">'
-      + '<td style="padding:8px 10px;font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;font-weight:900;color:' + rankColor + '">' + row.rank + '</td>'
-      + '<td style="padding:8px 10px;text-align:left"><div style="display:flex;align-items:center;gap:10px">'
-      + '<img src="' + hs + '" onerror="this.style.display=\'none\'" style="width:34px;height:34px;border-radius:50%;object-fit:cover;border:2px solid ' + rowTeamColor + ';flex-shrink:0">'
-      + '<span style="font-weight:500">' + (row.name || '') + '</span></div></td>'
-      + '<td style="text-align:right;padding:8px 10px;font-size:.75rem"><span style="color:' + rowTeamColor + ';font-weight:700">' + (row.team || '') + '</span></td>'
-      + '<td style="text-align:right;padding:8px 10px">' + (row.gp || 0) + '</td>'
-      + '<td style="text-align:right;padding:8px 10px;font-family:\'Barlow Condensed\',sans-serif;font-size:1.4rem;font-weight:900;color:' + rowTeamColor + '">' + fmt(row.stat_value) + '</td>'
-      + '<td style="text-align:right;padding:8px 10px">' + fmt(row.pts) + '</td>'
-      + '<td style="text-align:right;padding:8px 10px">' + fmt(row.reb) + '</td>'
-      + '<td style="text-align:right;padding:8px 10px">' + fmt(row.ast) + '</td>'
-      + '<td style="text-align:right;padding:8px 10px">' + fmt(row.stl) + '</td>'
-      + '<td style="text-align:right;padding:8px 10px">' + fmt(row.blk) + '</td>'
-      + '<td style="text-align:right;padding:8px 10px">' + fmtPct(row.fg_pct) + '</td>'
-      + '<td style="text-align:right;padding:8px 10px">' + fmtPct(row.fg3_pct) + '</td></tr>';
+        + '<td style="padding:8px 10px;font-family:\'Barlow Condensed\',sans-serif;font-size:1.3rem;font-weight:900;color:' + rankColor + '">' + row.rank + '</td>'
+        + '<td style="padding:8px 10px;text-align:left"><div style="display:flex;align-items:center;gap:10px">'
+        + '<img src="' + hs + '" onerror="onHsError(this,\'' + (row.name || '').replace(/'/g,'') + '\')" style="width:34px;height:34px;border-radius:50%;object-fit:cover;border:2px solid ' + rowTeamColor + ';flex-shrink:0">'
+        + '<span style="font-weight:500">' + (row.name || '') + '</span></div></td>'
+        + '<td style="text-align:right;padding:8px 10px;font-size:.75rem"><span style="color:' + rowTeamColor + ';font-weight:700">' + (row.team || '') + '</span></td>'
+        + '<td style="text-align:right;padding:8px 10px">' + (row.gp || 0) + '</td>'
+        + '<td style="text-align:right;padding:8px 10px;font-family:\'Barlow Condensed\',sans-serif;font-size:1.4rem;font-weight:900;color:' + rowTeamColor + '">' + fmtStat(row.stat_value) + '</td>'
+        + (is3pt ? '<td style="text-align:right;padding:8px 10px">' + fmt(row.fg3a) + '</td>' : '')
+        + (showPts ? '<td style="text-align:right;padding:8px 10px">' + fmtAux(row.pts) + '</td>' : '')
+        + (showReb ? '<td style="text-align:right;padding:8px 10px">' + fmtAux(row.reb) + '</td>' : '')
+        + (showAst ? '<td style="text-align:right;padding:8px 10px">' + fmtAux(row.ast) + '</td>' : '')
+        + (showStl ? '<td style="text-align:right;padding:8px 10px">' + fmtAux(row.stl) + '</td>' : '')
+        + (showBlk ? '<td style="text-align:right;padding:8px 10px">' + fmtAux(row.blk) + '</td>' : '')
+        + '<td style="text-align:right;padding:8px 10px">' + fmtPct(row.fg_pct) + '</td>'
+        + '<td style="text-align:right;padding:8px 10px">' + fmtPct(row.fg3_pct) + '</td></tr>';
     }).join('');
   }
 
   function renderChart(filtered) {
     destroyChart('chart-lb');
-    var ctx = document.getElementById('chart-lb');
+    var ctx   = document.getElementById('chart-lb');
     var title = document.getElementById('lb-chart-title');
     if (title) title.textContent = statLbl.toUpperCase() + ' — Top ' + filtered.length;
     if (!ctx || !filtered.length) return;
-    var vals = filtered.map(function(r) { return r.stat_value; });
-    var lbls = filtered.map(function(r) { return (r.name || '').split(' ').pop(); });
-    var bgCols = filtered.map(function(r) { return teamColor(r.team) + 'CC'; });
-    var borderCols = filtered.map(function(r) { return teamColor(r.team); });
+    var vals      = filtered.map(function(r) { return r.stat_value; });
+    var lbls      = filtered.map(function(r) { return (r.name || '').split(' ').pop(); });
+    var bgCols    = filtered.map(function(r) { return teamColor(r.team) + 'CC'; });
+    var borderCols= filtered.map(function(r) { return teamColor(r.team); });
     charts['chart-lb'] = new Chart(ctx.getContext('2d'), {
       type: 'bar',
       data: { labels: lbls, datasets: [{ label: statLbl, data: vals, backgroundColor: bgCols, borderColor: borderCols, borderWidth: 1, borderRadius: 4 }] },
@@ -1939,20 +2204,42 @@ function renderLeaderboard(d, c) {
     });
   }
 
+  function getDisplayLeaders() {
+    return ranked(convertLeaders(origLeaders, lbMode));
+  }
+
   function applyFilters() {
-    var teamSel = document.getElementById('lb-team-filter');
-    var gpInput = document.getElementById('lb-gp-filter');
+    var teamSel  = document.getElementById('lb-team-filter');
+    var gpInput  = document.getElementById('lb-gp-filter');
     var topInput = document.getElementById('lb-topn-filter');
-    var gp = parseInt(gpInput ? gpInput.value : '0', 10) || 0;
-    var topN = parseInt(topInput ? topInput.value : String(leaders.length), 10) || leaders.length;
-    if (document.getElementById('lb-gp-val')) document.getElementById('lb-gp-val').textContent = gp;
+    var gp   = parseInt(gpInput  ? gpInput.value  : '0',                   10) || 0;
+    var topN = parseInt(topInput ? topInput.value : String(origLeaders.length), 10) || origLeaders.length;
+    if (document.getElementById('lb-gp-val'))   document.getElementById('lb-gp-val').textContent   = gp;
     if (document.getElementById('lb-topn-val')) document.getElementById('lb-topn-val').textContent = topN;
-    var filtered = leaders.filter(function(r) {
+    var display  = getDisplayLeaders();
+    var filtered = display.filter(function(r) {
       var teamPass = !teamSel || teamSel.value === 'all' || (r.team || 'TOT') === teamSel.value;
       return teamPass && (r.gp || 0) >= gp;
     }).slice(0, topN);
+    renderHeader();
+    renderTop3(filtered.slice(0, 3));
     renderRows(filtered);
     renderChart(filtered);
+  }
+
+  // Mode toggle
+  var tgl = document.getElementById('lb-mode-toggle');
+  if (tgl) {
+    tgl.addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-lbmode]');
+      if (!btn) return;
+      tgl.querySelectorAll('button').forEach(function(b) { b.classList.remove('on'); });
+      btn.classList.add('on');
+      lbMode = btn.dataset.lbmode;
+      var lbl = document.getElementById('lb-mode-label');
+      if (lbl) lbl.textContent = lbMode === 'totals' ? 'Totals' : 'Per Game';
+      applyFilters();
+    });
   }
 
   ['lb-team-filter','lb-gp-filter','lb-topn-filter'].forEach(function(id) {
@@ -1979,6 +2266,16 @@ window.goLogPage = function(page) {
   logPage = page;
   document.getElementById('log-tbl-wrap').innerHTML = gameLogHtml(getFilteredLog(), sortState.col, sortState.dir);
 };
+
+// Auto-submit from ?q= URL param (used by testing/run_queries.py)
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var q = params.get('q');
+  if (q) {
+    document.getElementById('query-input').value = q;
+    setTimeout(submitQuery, 100);
+  }
+})();
 </script>
 </body>
 </html>

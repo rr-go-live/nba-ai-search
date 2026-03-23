@@ -30,6 +30,24 @@ from tools import TOOL_DEFINITIONS, execute_tool
 
 logger = logging.getLogger(__name__)
 
+# NBA team abbreviation → nickname, used to label the era team on H2H cards
+# when a player changed teams (e.g. Klay played Iguodala as a Warrior, not a Maverick).
+_H2H_TEAM_NAMES: dict = {
+    "ATL": "Hawks",        "BOS": "Celtics",       "BKN": "Nets",
+    "CHA": "Hornets",      "CHI": "Bulls",          "CLE": "Cavaliers",
+    "DAL": "Mavericks",    "DEN": "Nuggets",        "DET": "Pistons",
+    "GSW": "Warriors",     "HOU": "Rockets",        "IND": "Pacers",
+    "LAC": "Clippers",     "LAL": "Lakers",         "MEM": "Grizzlies",
+    "MIA": "Heat",         "MIL": "Bucks",          "MIN": "Timberwolves",
+    "NOP": "Pelicans",     "NYK": "Knicks",         "OKC": "Thunder",
+    "ORL": "Magic",        "PHI": "76ers",          "PHX": "Suns",
+    "POR": "Trail Blazers","SAC": "Kings",          "SAS": "Spurs",
+    "TOR": "Raptors",      "UTA": "Jazz",           "WAS": "Wizards",
+    # Historical
+    "SEA": "SuperSonics",  "NJN": "Nets",           "NOH": "Hornets",
+    "VAN": "Grizzlies",    "NOK": "Hornets",        "WSB": "Bullets",
+}
+
 SYSTEM_PROMPT = """You are an elite NBA statistics analyst powering a platform like StatMuse.
 Answer natural-language NBA stat queries with precision, nuance, and real data.
 
@@ -68,6 +86,16 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
     Giannis 2021 → season_from="2020-21", season_to="2020-21", season_type="Playoffs"
   For multi-season "prime years", use the peak 3–4 season range.
   label should be human-readable: "Kobe 2010 Finals", "Tatum 2024 Run", etc.
+
+  FINALS / SPECIFIC ROUND — series_round field:
+  When the query explicitly asks for a specific series or round (Finals, Conference Finals, etc.),
+  add series_round to each player config to filter stats to that round only:
+    "LeBron 2016 Finals"  → season_from="2015-16", season_to="2015-16", season_type="Playoffs", series_round="finals"
+    "KD 2017 Finals"      → season_from="2016-17", season_to="2016-17", season_type="Playoffs", series_round="finals"
+    "Kobe 2010 Finals"    → season_from="2009-10", season_to="2009-10", season_type="Playoffs", series_round="finals"
+  Valid series_round values: "finals", "cf" (Conference Finals), "r2", "r1"
+  Do NOT add series_round for full "championship run" or "playoff run" queries — only when a
+  specific round is explicitly mentioned.
 
   SEASON PARALLELISM RULE (critical):
   When one player has an explicit season/type and the other(s) do not, apply
@@ -141,6 +169,19 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
   have faced each other — from when the YOUNGER player entered the league.
   NEVER default to just the current season — you will miss most games.
 
+  *** FORMER-TEAMMATE RULE — CRITICAL ***
+  For players who were TEAMMATES at some point but also played as OPPONENTS before
+  or after, you MUST STILL use the full career range. DO NOT narrow season_from to
+  avoid teammate years. The backend automatically excludes all same-team games.
+  Narrowing the range SILENTLY DROPS early opponent-era games.
+
+  EXAMPLE: Iguodala vs Curry
+    ✗ WRONG: season_from="2019-20"  ← misses 2009-2013 PHI/DEN era vs GSW
+    ✓ RIGHT: season_from="2009-10"  ← backend excludes 2013-2019 GSW teammate games
+
+  EXAMPLE: KAT vs Edwards, Klay vs Curry, Bam vs Butler, Gobert vs Mitchell
+    ✓ RIGHT: use full career range — backend excludes all shared-team games
+
   FULL-CAREER DEFAULT: season_from = rookie year of the younger player,
                        season_to   = "2025-26"
 
@@ -156,6 +197,10 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
     Luka Doncic           → 2018-19
     Nikola Jokic          → 2015-16
     Kawhi Leonard         → 2011-12
+    Andre Iguodala        → 2004-05
+    Rudy Gobert           → 2013-14
+    Donovan Mitchell      → 2017-18
+    Bam Adebayo           → 2017-18
 
   EXAMPLES — no season qualifier → full career overlap:
     "LeBron vs Curry H2H"          → season_from="2009-10", season_to="2025-26"
@@ -163,9 +208,74 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
     "LeBron vs Tatum H2H"          → season_from="2017-18", season_to="2025-26"
     "Tatum vs Brunson H2H"         → season_from="2018-19", season_to="2025-26"
     "KD vs Giannis H2H"            → season_from="2013-14", season_to="2025-26"
+    "Iguodala vs Curry H2H"        → season_from="2009-10", season_to="2025-26"
+    "Gobert vs Mitchell H2H"       → season_from="2017-18", season_to="2025-26"
   EXAMPLES — with season qualifier → use the specified range only:
     "Tatum vs Brunson H2H this season" → season_from="2025-26", season_to="2025-26"
     "LeBron vs Butler H2H since 2020"  → season_from="2019-20", season_to="2025-26"
+
+▸ IMPOSSIBLE / OUT-OF-SCOPE QUERIES — INVALID (output immediately, no tools):
+  If the query is fundamentally impossible or out of scope, do NOT fetch any stats.
+  Output ONLY this JSON and nothing else:
+    { "type": "invalid", "reason": "<Clear, specific explanation of why this query can't be answered.>" }
+
+  Cases that are always invalid — return immediately:
+  • Future season not yet played:
+      "Curry 2040 Playoffs", "LeBron 2031-32 stats"
+      → reason: "The [YEAR] season hasn't happened yet. Curry's last active season was [YEAR]."
+  • Non-NBA athlete or fictional entity:
+      "Patrick Mahomes career stats", "LeBron vs Chad Basketball"
+      → reason: "[Name] is not an NBA player."
+  • Player who retired before the opponent entered the league:
+      "Bill Russell vs LeBron H2H", "Wilt Chamberlain vs Jokic H2H"
+      → reason: "Russell retired in 1969; LeBron entered the league in 2003 — they never overlapped."
+  • Season that predates the stat-tracking era (three-point line didn't exist until 1979-80):
+      "Three-point leaderboard for the 1975-76 season"
+      → reason: "The NBA three-point line wasn't introduced until the 1979-80 season."
+  • Player playing against their own current team:
+      "Tatum career stats vs Celtics", "Embiid vs 76ers career"
+      → reason: "A player cannot have head-to-head stats against their own team."
+  • Self-referential queries:
+      "Tatum stats when Tatum is inactive", "Jokic vs Jokic H2H"
+      → reason: "A player cannot be compared against themselves."
+
+▸ SAME-TEAM H2H — INVALID (output immediately, do NOT call any stats tools):
+  If both players have been on the same team for their ENTIRE overlapping careers
+  and have NEVER faced each other as NBA opponents, do not fetch any stats.
+  Output ONLY this JSON and nothing else:
+    { "type": "invalid", "reason": "<Player A> and <Player B> have been <Team> teammates since <year> and have never faced each other as opponents in the NBA." }
+
+  Examples of always-same-team pairs (never opponents):
+    Jayson Tatum vs Jaylen Brown       → BOS teammates since 2017, never opponents
+    Joel Embiid vs Tyrese Maxey        → PHI teammates since 2020, never opponents
+    Nikola Jokic vs Jamal Murray       → DEN teammates since 2016, never opponents
+    Steph Curry vs Draymond Green      → GSW teammates, never opponents
+
+  Do NOT output "invalid" for players who WERE teammates but later became opponents:
+    KAT & Edwards    — KAT traded to NYK 2024, now opponents ✓
+    Bam & Butler     — Butler traded to GSW Feb 2025, now opponents ✓
+    Iguodala & Curry — Iguodala on MEM/MIA 2019-21 (opponent era) ✓
+    Gobert & Mitchell — both traded from UTA 2022, now opponents ✓
+    Klay & Curry     — Klay signed with DAL 2024, now opponents ✓
+
+▸ INVALID "WHEN INACTIVE" — NEVER TEAMMATES (output immediately, no tools):
+  If the condition player was NEVER a teammate of the primary player, the split is
+  meaningless (returns all or none of the primary's games). Output ONLY:
+    { "type": "invalid", "reason": "<Primary> and <Condition> have never been teammates. 'Stats when X is inactive' only applies to teammates whose absence affects team dynamics." }
+
+  Examples of never-teammate inactive splits (always invalid):
+    Curry stats when LeBron inactive   → never shared a roster
+    Jokic stats when Giannis inactive  → never teammates
+    Tatum stats when KD inactive       → KD was OKC/GSW/BKN/PHX/HOU, never BOS
+    Embiid stats when Jokic inactive   → PHI vs DEN, never teammates
+    SGA stats when Luka inactive       → OKC vs DAL/LAL, never teammates
+
+  EXCEPTION — if they became teammates mid-season (e.g. Luka traded to LAL Feb 2025),
+  still pass the PRIMARY player's FULL career range (e.g. season_from="2018-19").
+  The backend's same-team guard automatically excludes pre-trade games from the wrong
+  team, so you will NOT accidentally include Luka's DAL games in a Luka/LeBron split.
+  Never narrow season_from to just the trade season or later — that silently drops
+  all games from the trade season itself (e.g. the Feb–Apr 2025 LAL window).
 
 ▸ Single inactive teammate:
   "Tatum stats when Brown is inactive" / "Tatum without Brown"
@@ -227,6 +337,20 @@ GENERAL INSIGHT RULES:
   • Write insight as plain prose — NO markdown. No **bold**, no *italic*, no bullet points
     starting with * or -. Use plain sentences and paragraph breaks only.
   • For H2H: note who had the edge and in what categories.
+  • H2H TEAM ERA CONTEXT (critical for accuracy):
+    - ALWAYS state which teams each player was on during the H2H games, not just their
+      current or most well-known team.
+    - If the H2H games span multiple eras where a player was on DIFFERENT teams
+      (e.g. Iguodala: PHI → DEN → [GSW teammate gap] → MEM → MIA), list every team
+      they represented in these matchups.
+    - If the two players were TEAMMATES at some point, explicitly say so and clarify
+      that the stats exclude their shared tenure. e.g. "These 10 games exclude their
+      6-year run as Golden State Warriors teammates from 2013 to 2019."
+    - If a player had MULTIPLE SEPARATE STINTS as opponents (e.g. opposed before AND
+      after a teammate era), name both windows explicitly. e.g. "Iguodala faced Curry
+      as a 76er and Nugget from 2009-13, and again as a Heat player in 2020-21 —
+      bookending their championship run together."
+    - Never say "before he joined X" if the player also returned to X afterward.
   • TERMINOLOGY: always say "win %" or "win percentage" — NEVER "win rate".
     e.g. "Tatum's win % in these games was 68%" not "win rate of 68%"
   • TEAM CONTEXT: always mention which team a player was on for the stats shown.
@@ -858,8 +982,34 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
         )
         if sp is None:
             sp = search_player_results[-1]   # fallback: single-player queries
-        if sp.get("team"):      result["player"]["team"]      = sp["team"]
-        if sp.get("team_abbr"): result["player"]["team_abbr"] = sp["team_abbr"]
+        # is_active=False is the reliable retired signal — retired players often
+        # still have a last-team entry in the NBA API (e.g. Iguodala → Warriors),
+        # so checking for empty team alone is insufficient.
+        if sp.get("is_active") is False:
+            result["player"]["retired"] = True
+        if sp.get("team"):
+            result["player"]["team"]      = sp["team"]
+            result["player"]["team_abbr"] = sp["team_abbr"]
+        elif not result["player"].get("retired"):
+            result["player"]["retired"] = True  # no team and not flagged yet
+
+    # Apply the same current-team override to opponent_player (H2H queries).
+    # Without this the LLM uses stale team data (e.g. Luka showing DAL after
+    # his trade to LAL).
+    if search_player_results and result.get("opponent_player"):
+        opp_pid = result["opponent_player"].get("player_id") or result["opponent_player"].get("id")
+        osp = next(
+            (s for s in reversed(search_player_results) if s.get("player_id") == opp_pid),
+            None,
+        )
+        if osp:
+            if osp.get("is_active") is False:
+                result["opponent_player"]["retired"] = True
+            if osp.get("team"):
+                result["opponent_player"]["team"]      = osp["team"]
+                result["opponent_player"]["team_abbr"] = osp["team_abbr"]
+            elif not result["opponent_player"].get("retired"):
+                result["opponent_player"]["retired"] = True
 
     if result_type == "vs_team" and vs_team_results:
         raw = vs_team_results[-1]
@@ -914,24 +1064,60 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
         if "career_totals"   in raw: result["career_totals"]   = raw["career_totals"]
         if "playoff_totals"  in raw: result["playoff_totals"]  = raw["playoff_totals"]
 
-    elif result_type == "h2h" and len(cond_results) >= 2:
-        result["player_log"]     = cond_results[0].get("primary_log",    result.get("player_log",   []))
-        result["opponent_log"]   = cond_results[1].get("primary_log",    result.get("opponent_log", []))
-        result["player_games"]   = cond_results[0].get("primary_games",  result.get("player_games",   0))
-        result["opponent_games"] = cond_results[1].get("primary_games",  result.get("opponent_games", 0))
-        # Override averages to preserve the 0–100 percentage scale
-        if "primary_averages" in cond_results[0]:
-            result["player_averages"]   = cond_results[0]["primary_averages"]
-        if "primary_averages" in cond_results[1]:
-            result["opponent_averages"] = cond_results[1]["primary_averages"]
+    elif result_type == "h2h":
+        if len(cond_results) >= 2:
+            result["player_log"]     = cond_results[0].get("primary_log",    result.get("player_log",   []))
+            result["opponent_log"]   = cond_results[1].get("primary_log",    result.get("opponent_log", []))
+            result["player_games"]   = cond_results[0].get("primary_games",  result.get("player_games",   0))
+            result["opponent_games"] = cond_results[1].get("primary_games",  result.get("opponent_games", 0))
+            # Override averages to preserve the 0–100 percentage scale
+            if "primary_averages" in cond_results[0]:
+                result["player_averages"]   = cond_results[0]["primary_averages"]
+            if "primary_averages" in cond_results[1]:
+                result["opponent_averages"] = cond_results[1]["primary_averages"]
+        elif len(cond_results) == 1:
+            result["player_log"]   = cond_results[0].get("primary_log",    result.get("player_log",   []))
+            result["opponent_log"] = cond_results[0].get("comparison_log", result.get("opponent_log", []))
+            if "primary_averages"    in cond_results[0]:
+                result["player_averages"]   = cond_results[0]["primary_averages"]
+            if "comparison_averages" in cond_results[0]:
+                result["opponent_averages"] = cond_results[0]["comparison_averages"]
 
-    elif result_type == "h2h" and len(cond_results) == 1:
-        result["player_log"]   = cond_results[0].get("primary_log",    result.get("player_log",   []))
-        result["opponent_log"] = cond_results[0].get("comparison_log", result.get("opponent_log", []))
-        if "primary_averages"    in cond_results[0]:
-            result["player_averages"]   = cond_results[0]["primary_averages"]
-        if "comparison_averages" in cond_results[0]:
-            result["opponent_averages"] = cond_results[0]["comparison_averages"]
+        # Era team detection for H2H: collect ALL distinct teams a player was on
+        # during the H2H games (in chronological order), and use the most recent
+        # for the card color. When a player had multiple opponent eras (e.g. Iguodala
+        # on PHI → DEN → [GSW teammate gap] → MEM → MIA), all teams are stored so
+        # the UI can display them as pill tags.
+        def _h2h_era_team(player_obj: dict, game_log: list) -> None:
+            if not player_obj or not game_log:
+                return
+            # date_sort is YYYY-MM-DD — chronological sort
+            sorted_log = sorted(game_log, key=lambda r: r.get("date_sort", ""))
+            # Collect unique teams in chronological order (first appearance per team)
+            seen: set  = set()
+            era_abbrs: list = []
+            for row in sorted_log:
+                abbr = ((row.get("matchup") or "")[:3].upper().strip())
+                if abbr and abbr not in seen:
+                    seen.add(abbr)
+                    era_abbrs.append(abbr)
+            if not era_abbrs:
+                return
+            recent_abbr  = era_abbrs[-1]   # most recent era → card color
+            current_abbr = player_obj.get("team_abbr", "")
+            # Store all opponent-era teams for the UI pill tags
+            player_obj["era_teams"] = [
+                {"abbr": a, "name": _H2H_TEAM_NAMES.get(a, a)} for a in era_abbrs
+            ]
+            if recent_abbr != current_abbr:
+                # Era differs from current: save current as secondary label
+                player_obj["current_team_abbr"] = current_abbr
+                player_obj["current_team"]      = player_obj.get("team", "")
+            player_obj["team_abbr"] = recent_abbr
+            player_obj["team"]      = _H2H_TEAM_NAMES.get(recent_abbr, recent_abbr)
+
+        _h2h_era_team(result.get("player"),          result.get("player_log",   []))
+        _h2h_era_team(result.get("opponent_player"), result.get("opponent_log", []))
 
     return result
 

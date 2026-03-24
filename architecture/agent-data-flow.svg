@@ -6,16 +6,15 @@
     <pattern id="dots" x="0" y="0" width="22" height="22" patternUnits="userSpaceOnUse">
       <circle cx="11" cy="11" r="0.65" fill="#e2e8f0"/>
     </pattern>
-    <marker id="ab"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="6" markerHeight="5" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#3b82f6"/></marker>
-    <marker id="ab2" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="6" markerHeight="5" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#60a5fa"/></marker>
-    <marker id="at"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="6" markerHeight="5" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#0d9488"/></marker>
-    <marker id="ap"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="6" markerHeight="5" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#7c3aed"/></marker>
-    <marker id="apr" viewBox="0 0 10 8" refX="1" refY="4" markerWidth="6" markerHeight="5" orient="auto-start-reverse"><path d="M10,0 L0,4 L10,8 Z" fill="#7c3aed"/></marker>
-    <marker id="ao"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="6" markerHeight="5" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#f97316"/></marker>
-    <marker id="ai"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="6" markerHeight="5" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#4f46e5"/></marker>
-    <marker id="ag"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="6" markerHeight="5" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#10b981"/></marker>
-    <!-- Slate marker for user→browser query arrow -->
-    <marker id="as"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="6" markerHeight="5" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#475569"/></marker>
+    <marker id="ab"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#3b82f6"/></marker>
+    <marker id="ab2" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#60a5fa"/></marker>
+    <marker id="at"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#0d9488"/></marker>
+    <marker id="ap"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#7c3aed"/></marker>
+    <marker id="apr" viewBox="0 0 10 8" refX="1" refY="4" markerWidth="8" markerHeight="7" orient="auto-start-reverse"><path d="M10,0 L0,4 L10,8 Z" fill="#7c3aed"/></marker>
+    <marker id="ao"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#f97316"/></marker>
+    <marker id="ai"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#4f46e5"/></marker>
+    <marker id="ag"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#10b981"/></marker>
+    <marker id="as"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#475569"/></marker>
   </defs>
 
   <!-- Background -->
@@ -27,17 +26,17 @@
   <rect x="818" y="0" width="382"  height="430" fill="#f0fdf8" opacity="0.55"/>
 
   <!-- Title -->
-  <text x="600" y="36" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a" letter-spacing="-0.3">NBA AI Search — System Architecture</text>
+  <text x="600" y="36" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a" letter-spacing="-0.3">NBA AI Search — System Architecture</text>
 
-  <!-- Section header pills — Backend FAR LEFT, Client FAR RIGHT -->
-  <rect x="12"  y="50" width="230" height="26" rx="13" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.2"/>
-  <text x="127" y="67" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1e40af" letter-spacing="1.2">⚙  BACKEND · PROCESSING</text>
+  <!-- Section header pills — BACKEND far left, CLIENT far right -->
+  <rect x="8"  y="48" width="248" height="30" rx="15" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="132" y="68" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1e40af" letter-spacing="0.8">⚙  BACKEND · PROCESSING</text>
 
-  <rect x="958" y="50" width="230" height="26" rx="13" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.2"/>
-  <text x="1073" y="67" text-anchor="middle" font-size="11.5" font-weight="700" fill="#065f46" letter-spacing="1.2">🌐  CLIENT · DELIVERY</text>
+  <rect x="944" y="48" width="248" height="30" rx="15" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="1068" y="68" text-anchor="middle" font-size="12.5" font-weight="700" fill="#065f46" letter-spacing="0.8">🌐  CLIENT · DELIVERY</text>
 
   <!-- Dashed divider -->
-  <line x1="818" y1="82" x2="818" y2="430" stroke="#93c5fd" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <line x1="818" y1="85" x2="818" y2="430" stroke="#93c5fd" stroke-width="1.5" stroke-dasharray="6,4"/>
 
   <!-- ═══════ ARROWS ═══════ -->
 
@@ -56,37 +55,36 @@
   <!-- Flask → Browser -->
   <line x1="734" y1="265" x2="866" y2="265" stroke="#4f46e5" stroke-width="3" marker-end="url(#ai)"/>
 
-  <!-- Browser → User  (response, top lane y=257) -->
-  <line x1="934" y1="257" x2="1065" y2="257" stroke="#10b981" stroke-width="3" marker-end="url(#ag)"/>
-  <!-- User → Browser  (query, bottom lane y=273) -->
-  <line x1="1065" y1="273" x2="934" y2="273" stroke="#475569" stroke-width="2.5" stroke-dasharray="5,3" marker-end="url(#as)"/>
+  <!-- Browser → User (response, top lane) -->
+  <line x1="934" y1="256" x2="1065" y2="256" stroke="#10b981" stroke-width="3" marker-end="url(#ag)"/>
+  <!-- User → Browser (query, bottom lane) -->
+  <line x1="1065" y1="274" x2="934" y2="274" stroke="#475569" stroke-width="3" marker-end="url(#as)"/>
 
-  <!-- Arrow labels -->
-  <rect x="118" y="212" width="64" height="15" rx="4" fill="white"/>
-  <text x="150" y="223" text-anchor="middle" font-size="9" fill="#3b82f6">cookies</text>
+  <!-- ═══════ ARROW LABELS — above/beside arrows, NO white backgrounds ═══════ -->
 
-  <rect x="113" y="299" width="56" height="15" rx="4" fill="white"/>
-  <text x="141" y="310" text-anchor="middle" font-size="9" fill="#60a5fa">scrape</text>
+  <!-- cookies: above the diagonal arrow from nba.com→Tools -->
+  <text x="178" y="215" text-anchor="middle" font-size="11.5" font-weight="600" fill="#3b82f6">cookies</text>
 
-  <rect x="330" y="251" width="100" height="16" rx="4" fill="white"/>
-  <text x="380" y="263" text-anchor="middle" font-size="9.5" fill="#0d9488">tool_call / result</text>
+  <!-- scrape: above the diagonal arrow from bbref→Tools -->
+  <text x="172" y="289" text-anchor="middle" font-size="11.5" font-weight="600" fill="#60a5fa">scrape</text>
 
-  <!-- Gemini arrow label — placed LEFT of the line to avoid covering node text -->
-  <rect x="496" y="171" width="76" height="15" rx="4" fill="white"/>
-  <text x="534" y="182" text-anchor="middle" font-size="9" fill="#7c3aed">inference</text>
+  <!-- tool_call / result: above horizontal arrow Tools→Agent -->
+  <text x="382" y="251" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0d9488">tool_call / result</text>
 
-  <rect x="554" y="251" width="84" height="16" rx="4" fill="white"/>
-  <text x="596" y="263" text-anchor="middle" font-size="9.5" fill="#f97316">SSE events</text>
+  <!-- inference: to the RIGHT of the vertical dashed arrow -->
+  <text x="500" y="184" text-anchor="start" font-size="11.5" font-weight="600" fill="#7c3aed">inference</text>
 
-  <rect x="750" y="251" width="66" height="16" rx="4" fill="white"/>
-  <text x="783" y="263" text-anchor="middle" font-size="9.5" fill="#4f46e5">renders</text>
+  <!-- SSE events: above horizontal arrow Agent→Flask -->
+  <text x="601" y="251" text-anchor="middle" font-size="11.5" font-weight="600" fill="#f97316">SSE events</text>
 
-  <!-- User ↔ Browser labels -->
-  <rect x="956" y="244" width="88" height="15" rx="4" fill="white"/>
-  <text x="1000" y="255" text-anchor="middle" font-size="9" fill="#10b981">← response</text>
+  <!-- renders: above horizontal arrow Flask→Browser -->
+  <text x="800" y="251" text-anchor="middle" font-size="11.5" font-weight="600" fill="#4f46e5">renders</text>
 
-  <rect x="956" y="273" width="88" height="15" rx="4" fill="white"/>
-  <text x="1000" y="284" text-anchor="middle" font-size="9" fill="#475569">query →</text>
+  <!-- returns response: above top Browser→User arrow -->
+  <text x="1000" y="243" text-anchor="middle" font-size="11.5" font-weight="600" fill="#10b981">returns response</text>
+
+  <!-- sends query: below bottom User→Browser arrow -->
+  <text x="1000" y="292" text-anchor="middle" font-size="11.5" font-weight="600" fill="#475569">sends query</text>
 
   <!-- ═══════ NODES ═══════ -->
 
@@ -98,9 +96,9 @@
     <ellipse cx="0" cy="10"  rx="14" ry="4.5" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1.5"/>
     <line x1="-14" y1="-10" x2="-14" y2="10" stroke="#3b82f6" stroke-width="1.5"/>
     <line x1="14"  y1="-10" x2="14"  y2="10" stroke="#3b82f6" stroke-width="1.5"/>
-    <text y="48"  text-anchor="middle" font-size="11.5" font-weight="700" fill="#1e40af">stats.nba.com</text>
-    <text y="62"  text-anchor="middle" font-size="9"    fill="#64748b">nba_http.py</text>
-    <text y="74"  text-anchor="middle" font-size="8.5"  fill="#94a3b8">Akamai cookie session</text>
+    <text y="50"  text-anchor="middle" font-size="12.5" font-weight="700" fill="#1e40af">stats.nba.com</text>
+    <text y="64"  text-anchor="middle" font-size="10"   fill="#64748b">nba_http.py</text>
+    <text y="76"  text-anchor="middle" font-size="9"    fill="#94a3b8">Akamai cookie session</text>
   </g>
 
   <!-- basketball-reference  cx=90  cy=335  r=28 -->
@@ -111,9 +109,9 @@
     <ellipse cx="0" cy="9"  rx="12" ry="4"   fill="#dbeafe" stroke="#60a5fa" stroke-width="1.3"/>
     <line x1="-12" y1="-9" x2="-12" y2="9" stroke="#60a5fa" stroke-width="1.3"/>
     <line x1="12"  y1="-9" x2="12"  y2="9" stroke="#60a5fa" stroke-width="1.3"/>
-    <text y="45"  text-anchor="middle" font-size="11"   font-weight="700" fill="#1d4ed8">basketball-ref</text>
-    <text y="58"  text-anchor="middle" font-size="9"    fill="#64748b">bbref_client.py</text>
-    <text y="70"  text-anchor="middle" font-size="8.5"  fill="#94a3b8">fallback · 2025-26 season</text>
+    <text y="47"  text-anchor="middle" font-size="12"   font-weight="700" fill="#1d4ed8">basketball-ref</text>
+    <text y="61"  text-anchor="middle" font-size="10"   fill="#64748b">bbref_client.py</text>
+    <text y="73"  text-anchor="middle" font-size="9"    fill="#94a3b8">fallback · 2025-26 season</text>
   </g>
 
   <!-- Tools  cx=285  cy=265  r=36 -->
@@ -129,9 +127,9 @@
       <g transform="rotate(240)"><rect x="12" y="-3.5" width="12" height="7" rx="2"/></g>
       <g transform="rotate(300)"><rect x="12" y="-3.5" width="12" height="7" rx="2"/></g>
     </g>
-    <text y="53"  text-anchor="middle" font-size="13" font-weight="700" fill="#0f766e">Tools</text>
-    <text y="67"  text-anchor="middle" font-size="9"  fill="#64748b">nba_stats_client.py</text>
-    <text y="79"  text-anchor="middle" font-size="8.5" fill="#94a3b8">career · h2h · awards · logs</text>
+    <text y="55"  text-anchor="middle" font-size="14" font-weight="700" fill="#0f766e">Tools</text>
+    <text y="70"  text-anchor="middle" font-size="10" fill="#64748b">nba_stats_client.py</text>
+    <text y="82"  text-anchor="middle" font-size="9"  fill="#94a3b8">career · h2h · awards · logs</text>
   </g>
 
   <!-- NBAStatsAgent (FEATURED)  cx=490  cy=265  r=46 -->
@@ -153,22 +151,24 @@
     <rect x="18"  y="-6" width="7" height="12" rx="3" fill="#f97316"/>
     <line x1="0" y1="-14" x2="0" y2="-24" stroke="#f97316" stroke-width="2.5"/>
     <circle cx="0" cy="-27" r="4" fill="#f97316"/>
-    <text y="65"  text-anchor="middle" font-size="13.5" font-weight="700" fill="#c2410c">NBAStatsAgent</text>
-    <text y="80"  text-anchor="middle" font-size="9.5"  fill="#64748b">agent.py · Think → Act → Observe</text>
-    <text y="93"  text-anchor="middle" font-size="8.5"  fill="#94a3b8">max 12 iterations</text>
+    <text y="67"  text-anchor="middle" font-size="14" font-weight="700" fill="#c2410c">NBAStatsAgent</text>
+    <text y="82"  text-anchor="middle" font-size="10" fill="#64748b">agent.py · Think → Act → Observe</text>
+    <text y="95"  text-anchor="middle" font-size="9"  fill="#94a3b8">max 12 iterations</text>
   </g>
 
   <!-- Gemini 2.5 Flash  cx=490  cy=105  r=34
-       Labels placed ABOVE the circle to avoid the inference arrow -->
+       Title ABOVE circle; "LLM reasoning" to the RIGHT of circle -->
   <g transform="translate(490,105)">
-    <!-- Title and subtitle sit ABOVE the circle -->
-    <text y="-46" text-anchor="middle" font-size="13" font-weight="700" fill="#5b21b6">Gemini 2.5 Flash</text>
-    <text y="-33" text-anchor="middle" font-size="9.5" fill="#64748b">LLM reasoning</text>
+    <!-- Title placed well above circle, large and clear -->
+    <text y="-46" text-anchor="middle" font-size="15" font-weight="700" fill="#5b21b6">Gemini 2.5 Flash</text>
+    <!-- Circle + 4-pointed star icon -->
     <circle r="34" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2.5"/>
     <path d="M 0,-22 C -3,-11 -11,-3 -22,0 C -11,3 -3,11 0,22 C 3,11 11,3 22,0 C 11,-3 3,-11 0,-22 Z"
           fill="#7c3aed" opacity="0.85"/>
     <path d="M 0,-12 C -1.5,-6 -6,-1.5 -12,0 C -6,1.5 -1.5,6 0,12 C 1.5,6 6,1.5 12,0 C 6,-1.5 1.5,-6 0,-12 Z"
           fill="white" opacity="0.42"/>
+    <!-- LLM reasoning label to the RIGHT of circle -->
+    <text x="42" y="5" text-anchor="start" font-size="11.5" fill="#64748b">LLM reasoning</text>
   </g>
 
   <!-- Flask Server  cx=700  cy=265  r=34 -->
@@ -181,9 +181,9 @@
     <circle cx="12" cy="-10.5" r="2.5" fill="#22c55e"/>
     <circle cx="12" cy="0.5"   r="2.5" fill="#22c55e"/>
     <circle cx="12" cy="11.5"  r="2.5" fill="#fbbf24"/>
-    <text y="52"  text-anchor="middle" font-size="12" font-weight="700" fill="#3730a3">Flask Server</text>
-    <text y="66"  text-anchor="middle" font-size="9.5" fill="#64748b">app.py · SSE</text>
-    <text y="78"  text-anchor="middle" font-size="8.5" fill="#94a3b8">POST /api/query → job_id</text>
+    <text y="54"  text-anchor="middle" font-size="13" font-weight="700" fill="#3730a3">Flask Server</text>
+    <text y="68"  text-anchor="middle" font-size="10" fill="#64748b">app.py · SSE</text>
+    <text y="80"  text-anchor="middle" font-size="9"  fill="#94a3b8">POST /api/query → job_id</text>
   </g>
 
   <!-- Browser  cx=900  cy=265  r=34 -->
@@ -197,11 +197,11 @@
     <rect  x="-17" y="-2"  width="26" height="2.5" rx="1" fill="#10b981" opacity="0.35"/>
     <rect  x="-17" y="4"   width="30" height="2.5" rx="1" fill="#10b981" opacity="0.35"/>
     <rect  x="-17" y="10"  width="20" height="2.5" rx="1" fill="#10b981" opacity="0.25"/>
-    <rect  x="-4" y="13"  width="8"  height="8" fill="#10b981"/>
-    <rect  x="-11" y="20" width="22" height="4" rx="2" fill="#10b981"/>
-    <text y="52"  text-anchor="middle" font-size="12" font-weight="700" fill="#065f46">Browser</text>
-    <text y="66"  text-anchor="middle" font-size="9.5" fill="#64748b">index.html</text>
-    <text y="78"  text-anchor="middle" font-size="8.5" fill="#94a3b8">vanilla JS · no build step</text>
+    <rect  x="-4" y="13"   width="8"  height="8" fill="#10b981"/>
+    <rect  x="-11" y="20"  width="22" height="4" rx="2" fill="#10b981"/>
+    <text y="54"  text-anchor="middle" font-size="13" font-weight="700" fill="#065f46">Browser</text>
+    <text y="68"  text-anchor="middle" font-size="10" fill="#64748b">index.html</text>
+    <text y="80"  text-anchor="middle" font-size="9"  fill="#94a3b8">vanilla JS · no build step</text>
   </g>
 
   <!-- User  cx=1095  cy=265  r=30 -->
@@ -209,109 +209,109 @@
     <circle r="30" fill="#f8fafc" stroke="#475569" stroke-width="2.5"/>
     <circle cx="0" cy="-10" r="8.5" fill="#94a3b8"/>
     <path   d="M -16,18 Q -16,4 0,4 Q 16,4 16,18 Z" fill="#94a3b8"/>
-    <text y="47"  text-anchor="middle" font-size="13.5" font-weight="700" fill="#334155">User</text>
-    <text y="62"  text-anchor="middle" font-size="9"    fill="#64748b">natural language</text>
+    <text y="49"  text-anchor="middle" font-size="14" font-weight="700" fill="#334155">User</text>
+    <text y="64"  text-anchor="middle" font-size="10" fill="#64748b">natural language</text>
   </g>
 
   <!-- ═══════════════════════════════════════════════════
        TOOLS CALLOUT BOX  (bottom-left corner)
        ═══════════════════════════════════════════════════ -->
-  <rect x="16" y="448" width="376" height="318" rx="10" fill="#e2e8f0" opacity="0.45"/>
-  <rect x="12" y="444" width="376" height="318" rx="10" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
-  <rect x="12" y="444" width="5"   height="318" rx="2" fill="#0d9488"/>
-  <line x1="27" y1="473" x2="378" y2="473" stroke="#f1f5f9" stroke-width="1.5"/>
-  <text x="200" y="464" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0f172a">🔧  Available Tools</text>
-  <text x="200" y="486" text-anchor="middle" font-size="9" fill="#94a3b8">Gemini selects from these on each iteration</text>
+  <rect x="16" y="448" width="376" height="320" rx="10" fill="#e2e8f0" opacity="0.45"/>
+  <rect x="12" y="444" width="376" height="320" rx="10" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <rect x="12" y="444" width="5"   height="320" rx="2" fill="#0d9488"/>
+  <line x1="27" y1="476" x2="378" y2="476" stroke="#f1f5f9" stroke-width="1.5"/>
+  <text x="200" y="466" text-anchor="middle" font-size="13.5" font-weight="700" fill="#0f172a">🔧  Available Tools</text>
+  <text x="200" y="490" text-anchor="middle" font-size="10" fill="#94a3b8">Gemini selects from these on each iteration</text>
 
   <!-- search_player -->
-  <circle cx="40" cy="510" r="9" fill="#f97316"/>
-  <text x="40" y="514" text-anchor="middle" font-size="7.5" font-weight="700" fill="white">SP</text>
-  <text x="58" y="507" font-size="10.5" font-weight="700" fill="#0f172a">search_player</text>
-  <text x="58" y="520" font-size="8.5" fill="#64748b">Resolve name/nickname → player_id + metadata</text>
+  <circle cx="40" cy="514" r="11" fill="#f97316"/>
+  <text x="40" y="518.5" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">SP</text>
+  <text x="58" y="511" font-size="11.5" font-weight="700" fill="#0f172a">search_player</text>
+  <text x="58" y="526" font-size="9.5" fill="#64748b">Resolve name/nickname → player_id + metadata</text>
 
   <!-- search_team -->
-  <circle cx="40" cy="544" r="9" fill="#4f46e5"/>
-  <text x="40" y="548" text-anchor="middle" font-size="7.5" font-weight="700" fill="white">ST</text>
-  <text x="58" y="541" font-size="10.5" font-weight="700" fill="#0f172a">search_team</text>
-  <text x="58" y="554" font-size="8.5" fill="#64748b">Resolve team name/city/abbrev → team_id</text>
+  <circle cx="40" cy="552" r="11" fill="#4f46e5"/>
+  <text x="40" y="556.5" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">ST</text>
+  <text x="58" y="549" font-size="11.5" font-weight="700" fill="#0f172a">search_team</text>
+  <text x="58" y="564" font-size="9.5" fill="#64748b">Resolve team name/city/abbrev → team_id</text>
 
   <!-- get_career_stats -->
-  <circle cx="40" cy="578" r="9" fill="#0d9488"/>
-  <text x="40" y="582" text-anchor="middle" font-size="7.5" font-weight="700" fill="white">CS</text>
-  <text x="58" y="575" font-size="10.5" font-weight="700" fill="#0f172a">get_career_stats</text>
-  <text x="58" y="588" font-size="8.5" fill="#64748b">Season-by-season + career totals, highs, accolades</text>
+  <circle cx="40" cy="590" r="11" fill="#0d9488"/>
+  <text x="40" y="594.5" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">CS</text>
+  <text x="58" y="587" font-size="11.5" font-weight="700" fill="#0f172a">get_career_stats</text>
+  <text x="58" y="602" font-size="9.5" fill="#64748b">Season-by-season + career totals, highs, accolades</text>
 
   <!-- get_multi_player_stats -->
-  <circle cx="40" cy="612" r="9" fill="#7c3aed"/>
-  <text x="40" y="616" text-anchor="middle" font-size="7.5" font-weight="700" fill="white">MP</text>
-  <text x="58" y="609" font-size="10.5" font-weight="700" fill="#0f172a">get_multi_player_stats</text>
-  <text x="58" y="622" font-size="8.5" fill="#64748b">Compare up to 5 players side-by-side</text>
+  <circle cx="40" cy="628" r="11" fill="#7c3aed"/>
+  <text x="40" y="632.5" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">MP</text>
+  <text x="58" y="625" font-size="11.5" font-weight="700" fill="#0f172a">get_multi_player_stats</text>
+  <text x="58" y="640" font-size="9.5" fill="#64748b">Compare up to 5 players side-by-side</text>
 
   <!-- get_stats_vs_team -->
-  <circle cx="40" cy="646" r="9" fill="#e11d48"/>
-  <text x="40" y="650" text-anchor="middle" font-size="7.5" font-weight="700" fill="white">VT</text>
-  <text x="58" y="643" font-size="10.5" font-weight="700" fill="#0f172a">get_stats_vs_team</text>
-  <text x="58" y="656" font-size="8.5" fill="#64748b">Head-to-head splits: player performance vs. opponent</text>
+  <circle cx="40" cy="666" r="11" fill="#e11d48"/>
+  <text x="40" y="670.5" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">VT</text>
+  <text x="58" y="663" font-size="11.5" font-weight="700" fill="#0f172a">get_stats_vs_team</text>
+  <text x="58" y="678" font-size="9.5" fill="#64748b">Head-to-head splits: player performance vs. opponent</text>
 
   <!-- get_conditional_stats -->
-  <circle cx="40" cy="680" r="9" fill="#d97706"/>
-  <text x="40" y="684" text-anchor="middle" font-size="7.5" font-weight="700" fill="white">CO</text>
-  <text x="58" y="677" font-size="10.5" font-weight="700" fill="#0f172a">get_conditional_stats</text>
-  <text x="58" y="690" font-size="8.5" fill="#64748b">Filter stats by home/away, W/L, clutch, date range</text>
+  <circle cx="40" cy="704" r="11" fill="#d97706"/>
+  <text x="40" y="708.5" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">CO</text>
+  <text x="58" y="701" font-size="11.5" font-weight="700" fill="#0f172a">get_conditional_stats</text>
+  <text x="58" y="716" font-size="9.5" fill="#64748b">Filter stats by home/away, W/L, clutch, date range</text>
 
   <!-- get_leaderboard -->
-  <circle cx="40" cy="714" r="9" fill="#0284c7"/>
-  <text x="40" y="718" text-anchor="middle" font-size="7.5" font-weight="700" fill="white">LB</text>
-  <text x="58" y="711" font-size="10.5" font-weight="700" fill="#0f172a">get_leaderboard</text>
-  <text x="58" y="724" font-size="8.5" fill="#64748b">Top-N league leaders for any stat &amp; season</text>
+  <circle cx="40" cy="742" r="11" fill="#0284c7"/>
+  <text x="40" y="746.5" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">LB</text>
+  <text x="58" y="739" font-size="11.5" font-weight="700" fill="#0f172a">get_leaderboard</text>
+  <text x="58" y="754" font-size="9.5" fill="#64748b">Top-N league leaders for any stat &amp; season</text>
 
   <!-- ═══════════════════════════════════════════════════
        STEP-BY-STEP BOX  (bottom-right corner)
        ═══════════════════════════════════════════════════ -->
-  <rect x="406" y="448" width="782" height="318" rx="10" fill="#e2e8f0" opacity="0.45"/>
-  <rect x="402" y="444" width="782" height="318" rx="10" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
-  <rect x="402" y="444" width="5"   height="318" rx="2" fill="#6366f1"/>
-  <line x1="417" y1="473" x2="1174" y2="473" stroke="#f1f5f9" stroke-width="1.5"/>
-  <text x="793" y="464" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1e293b">End-to-End Data Flow</text>
+  <rect x="406" y="448" width="782" height="320" rx="10" fill="#e2e8f0" opacity="0.45"/>
+  <rect x="402" y="444" width="782" height="320" rx="10" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <rect x="402" y="444" width="5"   height="320" rx="2" fill="#6366f1"/>
+  <line x1="417" y1="476" x2="1174" y2="476" stroke="#f1f5f9" stroke-width="1.5"/>
+  <text x="793" y="466" text-anchor="middle" font-size="13.5" font-weight="700" fill="#1e293b">End-to-End Data Flow</text>
 
   <!-- Step 1 -->
-  <circle cx="432" cy="498" r="10" fill="#475569"/>
-  <text   x="432" y="502" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">1</text>
-  <text   x="450" y="502" font-size="9.5" fill="#334155">User types query → browser sends <tspan font-weight="700" fill="#0f172a">POST /api/query</tspan> to Flask, receives <tspan font-weight="700" fill="#0f172a">job_id</tspan></text>
+  <circle cx="432" cy="502" r="11" fill="#475569"/>
+  <text   x="432" y="506.5" text-anchor="middle" font-size="9" font-weight="700" fill="white">1</text>
+  <text   x="452" y="506" font-size="10.5" fill="#334155">User types query → browser sends <tspan font-weight="700" fill="#0f172a">POST /api/query</tspan> to Flask, receives <tspan font-weight="700" fill="#0f172a">job_id</tspan></text>
 
   <!-- Step 2 -->
-  <circle cx="432" cy="525" r="10" fill="#4f46e5"/>
-  <text   x="432" y="529" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">2</text>
-  <text   x="450" y="529" font-size="9.5" fill="#334155">Flask spawns a background <tspan font-weight="700" fill="#0f172a">NBAStatsAgent</tspan> thread; browser opens SSE connection</text>
+  <circle cx="432" cy="532" r="11" fill="#4f46e5"/>
+  <text   x="432" y="536.5" text-anchor="middle" font-size="9" font-weight="700" fill="white">2</text>
+  <text   x="452" y="536" font-size="10.5" fill="#334155">Flask spawns a background <tspan font-weight="700" fill="#0f172a">NBAStatsAgent</tspan> thread; browser opens SSE connection</text>
 
   <!-- Step 3 -->
-  <circle cx="432" cy="552" r="10" fill="#7c3aed"/>
-  <text   x="432" y="556" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">3</text>
-  <text   x="450" y="556" font-size="9.5" fill="#334155">Agent calls <tspan font-weight="700" fill="#0f172a">Gemini 2.5 Flash</tspan> → LLM reasons and selects which NBA tools to call</text>
+  <circle cx="432" cy="562" r="11" fill="#7c3aed"/>
+  <text   x="432" y="566.5" text-anchor="middle" font-size="9" font-weight="700" fill="white">3</text>
+  <text   x="452" y="566" font-size="10.5" fill="#334155">Agent calls <tspan font-weight="700" fill="#0f172a">Gemini 2.5 Flash</tspan> → LLM reasons and selects which NBA tools to call</text>
 
   <!-- Step 4 -->
-  <circle cx="432" cy="579" r="10" fill="#0d9488"/>
-  <text   x="432" y="583" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">4</text>
-  <text   x="450" y="583" font-size="9.5" fill="#334155">Tools execute: <tspan font-weight="700" fill="#0f172a">career stats, game logs, awards, H2H splits</tspan> via stats.nba.com</text>
+  <circle cx="432" cy="592" r="11" fill="#0d9488"/>
+  <text   x="432" y="596.5" text-anchor="middle" font-size="9" font-weight="700" fill="white">4</text>
+  <text   x="452" y="596" font-size="10.5" fill="#334155">Tools execute: <tspan font-weight="700" fill="#0f172a">career stats, game logs, awards, H2H splits</tspan> via stats.nba.com</text>
 
   <!-- Step 5 -->
-  <circle cx="432" cy="606" r="10" fill="#3b82f6"/>
-  <text   x="432" y="610" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">5</text>
-  <text   x="450" y="610" font-size="9.5" fill="#334155"><tspan font-weight="700" fill="#0f172a">bbref_client</tspan> provides fallback for 2025-26 season data and current leaderboards</text>
+  <circle cx="432" cy="622" r="11" fill="#3b82f6"/>
+  <text   x="432" y="626.5" text-anchor="middle" font-size="9" font-weight="700" fill="white">5</text>
+  <text   x="452" y="626" font-size="10.5" fill="#334155"><tspan font-weight="700" fill="#0f172a">bbref_client</tspan> provides fallback for 2025-26 season data and current leaderboards</text>
 
   <!-- Step 6 -->
-  <circle cx="432" cy="633" r="10" fill="#f97316"/>
-  <text   x="432" y="637" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">6</text>
-  <text   x="450" y="637" font-size="9.5" fill="#334155">Agent merges data via <tspan font-weight="700" fill="#0f172a">_merge_raw_logs()</tspan>, Gemini generates final narrative</text>
+  <circle cx="432" cy="652" r="11" fill="#f97316"/>
+  <text   x="432" y="656.5" text-anchor="middle" font-size="9" font-weight="700" fill="white">6</text>
+  <text   x="452" y="656" font-size="10.5" fill="#334155">Agent merges data via <tspan font-weight="700" fill="#0f172a">_merge_raw_logs()</tspan>, Gemini generates final narrative</text>
 
   <!-- Step 7 -->
-  <circle cx="432" cy="660" r="10" fill="#10b981"/>
-  <text   x="432" y="664" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">7</text>
-  <text   x="450" y="664" font-size="9.5" fill="#334155">Flask streams <tspan font-weight="700" fill="#0f172a">SSE events</tspan> → browser renders career cards, highs, accolades &amp; charts</text>
+  <circle cx="432" cy="682" r="11" fill="#10b981"/>
+  <text   x="432" y="686.5" text-anchor="middle" font-size="9" font-weight="700" fill="white">7</text>
+  <text   x="452" y="686" font-size="10.5" fill="#334155">Flask streams <tspan font-weight="700" fill="#0f172a">SSE events</tspan> → browser renders career cards, highs, accolades &amp; charts</text>
 
   <!-- Step 8 -->
-  <circle cx="432" cy="687" r="10" fill="#475569"/>
-  <text   x="432" y="691" text-anchor="middle" font-size="8.5" font-weight="700" fill="white">8</text>
-  <text   x="450" y="691" font-size="9.5" fill="#334155">User reads natural language response; can ask follow-up queries to restart the loop</text>
+  <circle cx="432" cy="712" r="11" fill="#475569"/>
+  <text   x="432" y="716.5" text-anchor="middle" font-size="9" font-weight="700" fill="white">8</text>
+  <text   x="452" y="716" font-size="10.5" fill="#334155">User reads natural language response; can ask follow-up queries to restart the loop</text>
 
 </svg>

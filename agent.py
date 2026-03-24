@@ -27,6 +27,7 @@ from google.genai import types
 
 from config import GEMINI_MODEL, MAX_AGENT_ITERS, AGENT_MAX_TOKENS
 from tools import TOOL_DEFINITIONS, execute_tool
+import nba_stats_client as nba
 
 logger = logging.getLogger(__name__)
 
@@ -157,11 +158,11 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
   → H2H means games where BOTH players were active in the same game.
   → Step 1: search_player for both players.
   → Step 2: search_team to find each player's current/relevant team.
-  → Step 3: get_conditional_stats TWICE — do NOT set opponent_abbr for H2H.
-       The game-ID intersection already captures all matchups correctly,
-       including when a player changes teams mid-career.
-       Call 1: player_id=LeBron, condition_player_ids=[curry_id], all_active=true
-       Call 2: player_id=Curry,  condition_player_ids=[lebron_id], all_active=true
+  → Step 3: get_conditional_stats TWICE — always set require_opponent=true for H2H.
+       This ensures shared-team games (e.g. Klay+Curry on GSW) are excluded,
+       leaving only genuine opponent matchups.
+       Call 1: player_id=LeBron, condition_player_ids=[curry_id], all_active=true, require_opponent=true
+       Call 2: player_id=Curry,  condition_player_ids=[lebron_id], all_active=true, require_opponent=true
   → Output type: "h2h" with player + opponent_player blocks
 
   H2H SEASON RANGE RULE (critical — do not skip):
@@ -239,13 +240,21 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
       "Tatum stats when Tatum is inactive", "Jokic vs Jokic H2H"
       → reason: "A player cannot be compared against themselves."
 
-▸ SAME-TEAM H2H — INVALID (output immediately, do NOT call any stats tools):
-  If both players have been on the same team for their ENTIRE overlapping careers
-  and have NEVER faced each other as NBA opponents, do not fetch any stats.
-  Output ONLY this JSON and nothing else:
+▸ SAME-TEAM H2H — REQUIRES VERIFICATION BEFORE MARKING INVALID:
+  *** NEVER output invalid for same-team H2H without first calling search_player
+  for BOTH players to confirm their current teams. Your training data may be stale
+  — a player may have been traded recently. ***
+
+  Workflow:
+    1. Call search_player for Player A → get current team_abbr
+    2. Call search_player for Player B → get current team_abbr
+    3. If current teams DIFFER → proceed with H2H stats (they are now opponents)
+    4. If current teams MATCH AND they have NEVER been opponents in any era → invalid
+
+  Only output invalid after confirming both players share the same current team:
     { "type": "invalid", "reason": "<Player A> and <Player B> have been <Team> teammates since <year> and have never faced each other as opponents in the NBA." }
 
-  Examples of always-same-team pairs (never opponents):
+  Examples of always-same-team pairs (verify with search_player first):
     Jayson Tatum vs Jaylen Brown       → BOS teammates since 2017, never opponents
     Joel Embiid vs Tyrese Maxey        → PHI teammates since 2020, never opponents
     Nikola Jokic vs Jamal Murray       → DEN teammates since 2016, never opponents
@@ -257,13 +266,17 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
     Iguodala & Curry — Iguodala on MEM/MIA 2019-21 (opponent era) ✓
     Gobert & Mitchell — both traded from UTA 2022, now opponents ✓
     Klay & Curry     — Klay signed with DAL 2024, now opponents ✓
+    Al Horford       — traded from BOS to GSW; former BOS teammates now opponents ✓
 
-▸ INVALID "WHEN INACTIVE" — NEVER TEAMMATES (output immediately, no tools):
-  If the condition player was NEVER a teammate of the primary player, the split is
-  meaningless (returns all or none of the primary's games). Output ONLY:
+▸ INVALID "WHEN INACTIVE" — NEVER TEAMMATES:
+  *** Call search_player for BOTH players before marking invalid. A recent trade
+  may have made them teammates. Only mark invalid after confirming they have never
+  shared a roster in any season. ***
+
+  If confirmed never teammates, output:
     { "type": "invalid", "reason": "<Primary> and <Condition> have never been teammates. 'Stats when X is inactive' only applies to teammates whose absence affects team dynamics." }
 
-  Examples of never-teammate inactive splits (always invalid):
+  Examples of never-teammate inactive splits (confirm with search_player first):
     Curry stats when LeBron inactive   → never shared a roster
     Jokic stats when Giannis inactive  → never teammates
     Tatum stats when KD inactive       → KD was OKC/GSW/BKN/PHX/HOU, never BOS
@@ -276,6 +289,14 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
   team, so you will NOT accidentally include Luka's DAL games in a Luka/LeBron split.
   Never narrow season_from to just the trade season or later — that silently drops
   all games from the trade season itself (e.g. the Feb–Apr 2025 LAL window).
+
+▸ Stats WITH a teammate (both active, same team):
+  "Luka stats with Brunson" / "Tatum stats when Brown plays" / "LeBron stats with AD"
+  → get_conditional_stats(player_id=luka, condition_player_ids=[brunson_id],
+      all_active=true, require_opponent=false)
+  *** DO NOT set require_opponent=true here — that would exclude all shared-team games
+  and return only games when they faced each other as opponents, which is wrong. ***
+  → Output type: "conditional"
 
 ▸ Single inactive teammate:
   "Tatum stats when Brown is inactive" / "Tatum without Brown"
@@ -1063,6 +1084,11 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
         # Override career/playoff totals — these drive the donut charts
         if "career_totals"   in raw: result["career_totals"]   = raw["career_totals"]
         if "playoff_totals"  in raw: result["playoff_totals"]  = raw["playoff_totals"]
+        # Career highs — the model never outputs this, always pull from cache
+        if "career_highs"         in raw: result["career_highs"]         = raw["career_highs"]
+        if "regular_season_best"  in raw: result["regular_season_best"]  = raw["regular_season_best"]
+        if "playoff_best"         in raw: result["playoff_best"]         = raw["playoff_best"]
+        if "playoff_career_highs" in raw: result["playoff_career_highs"] = raw["playoff_career_highs"]
 
     elif result_type == "h2h":
         if len(cond_results) >= 2:
@@ -1119,23 +1145,82 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
         _h2h_era_team(result.get("player"),          result.get("player_log",   []))
         _h2h_era_team(result.get("opponent_player"), result.get("opponent_log", []))
 
+    # ── Attach awards/accolades to every player object in the result ──────────
+    # Collect all player objects that have a player_id, then fetch awards once
+    # per unique player_id so we never double-fetch (H2H has two players).
+    player_objects: list = []
+    if result.get("player") and result["player"].get("player_id"):
+        player_objects.append(result["player"])
+    if result.get("opponent_player") and result["opponent_player"].get("player_id"):
+        player_objects.append(result["opponent_player"])
+    # compare type: players list
+    for rp in result.get("players", []):
+        if rp.get("player_id"):
+            player_objects.append(rp)
+
+    seen_pids: set = set()
+    awards_cache: dict = {}
+    for pobj in player_objects:
+        pid = pobj.get("player_id")
+        if not pid or pid in seen_pids:
+            continue
+        seen_pids.add(pid)
+        try:
+            awards = nba.get_player_awards(int(pid))
+            awards_cache[pid] = awards
+        except Exception as e:
+            logger.warning(f"awards fetch failed pid={pid}: {e}")
+            awards_cache[pid] = []
+
+    for pobj in player_objects:
+        pid = pobj.get("player_id")
+        if pid in awards_cache:
+            pobj["awards"] = awards_cache[pid]
+
     return result
+
+
+def _season_range_label(inp: dict) -> str:
+    """Return a readable season range string like '2018-19 → 2025-26'."""
+    s_from = inp.get("season_from", "")
+    s_to   = inp.get("season_to", "")
+    if s_from and s_to and s_from != s_to:
+        return f"{s_from} → {s_to}"
+    if s_from:
+        return s_from
+    return ""
 
 
 def _describe_tool(name: str, inp: dict) -> str:
     if name == "search_player":   return f"🔍 Looking up: **{inp.get('name')}**"
     if name == "search_team":     return f"🏀 Looking up team: **{inp.get('name')}**"
     if name == "get_stats_vs_team":
-        return f"📊 Fetching stats vs **{inp.get('opponent_abbr')}** ({inp.get('season_from','?')}–{inp.get('season_to','?')})"
+        rng = _season_range_label(inp)
+        return f"📊 Fetching stats vs **{inp.get('opponent_abbr')}**" + (f" ({rng})" if rng else "")
     if name == "get_conditional_stats":
         active = inp.get("all_active", True)
+        rng    = _season_range_label(inp)
         ids    = inp.get("condition_player_ids", [])
-        label  = "H2H active" if active else f"inactive split ({len(ids)} player{'s' if len(ids)>1 else ''})"
-        return f"⚖️ Computing {label}…"
-    if name == "get_career_stats":  return "📈 Loading career stats…"
+        if active and inp.get("require_opponent"):
+            label = "H2H matchups"
+        elif active:
+            label = "shared games (both active)"
+        else:
+            label = f"inactive split ({len(ids)} player{'s' if len(ids)>1 else ''})"
+        return f"⚖️ Computing {label}" + (f" · **{rng}**" if rng else "") + "…"
+    if name == "get_career_stats":
+        rng  = _season_range_label(inp)
+        s_type = inp.get("season_type", "")
+        parts = ["📈 Loading career stats"]
+        if rng:   parts.append(f"**{rng}**")
+        if s_type and s_type != "Regular Season": parts.append(s_type)
+        return " · ".join(parts) + "…"
     if name == "get_multi_player_stats":
-        n = len(inp.get("players", []))
-        return f"📊 Fetching stats for {n} players…"
+        players = inp.get("players", [])
+        n = len(players)
+        # Show season range from first player config if available
+        rng = _season_range_label(players[0]) if players else ""
+        return f"📊 Fetching stats for {n} player{'s' if n != 1 else ''}" + (f" · **{rng}**" if rng else "") + "…"
     if name == "get_leaderboard":
         return f"🏆 Loading {inp.get('stat','pts').upper()} leaderboard ({inp.get('season','')})…"
     return f"🔧 {name}"

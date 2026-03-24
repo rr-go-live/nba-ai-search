@@ -561,15 +561,103 @@ def get_player_career_stats(
             "fga":     wp("FGA"),      # attempts/game — drives donut hover
             "fg3_pct": wpct("FG3_PCT"),
             "fg3a":    wp("FG3A"),
+            "fg3m":    wp("FG3M"),     # made 3s/game — career high cards
             "ft_pct":  wpct("FT_PCT"),
             "fta":     wp("FTA"),      # attempts/game — drives donut hover
+            "ftm":     wp("FTM"),      # made FTs/game — career high cards
         }
 
+    # ── Regular-Season Career Highs — embedded in playercareerstats response ───
+    # Each row: STAT, STAT_VALUE, GAME_DATE, VS_TEAM_ABBREVIATION
+    # Multiple rows may share the same STAT (tied highs) — keep first occurrence.
+    _WANTED_HIGHS = {"PTS", "REB", "AST", "STL", "BLK", "FTM", "FTA", "FG3M"}
+    ch_rows = data.get("CareerHighs", [])
+    career_highs: dict = {}
+    for row in ch_rows:
+        stat = (row.get("STAT") or "").upper()
+        if stat not in _WANTED_HIGHS or stat in career_highs:
+            continue
+        career_highs[stat.lower()] = {
+            "value":    _safe_int(row.get("STAT_VALUE")),
+            "date":     str(row.get("GAME_DATE") or ""),
+            "opponent": str(row.get("VS_TEAM_ABBREVIATION") or ""),
+        }
+
+    # ── Regular-Season Best (best single-season RS average per stat) ──────────
+    # Used for the "Best Regular Season Averages" card on career pages.
+    _RS_STAT_MAP = [
+        ("pts",  "PTS"),  ("reb",  "REB"),  ("ast",  "AST"),
+        ("stl",  "STL"),  ("blk",  "BLK"),  ("ftm",  "FTM"),
+        ("fta",  "FTA"),  ("fg3m", "FG3M"),
+    ]
+    reg_all_raw = data.get("SeasonTotalsRegularSeason", [])
+    regular_season_best: dict = {}
+    for lk, uk in _RS_STAT_MAP:
+        best = max(reg_all_raw, key=lambda r, k=uk: _safe_float(r.get(k, 0)), default=None)
+        if best and _safe_float(best.get(uk, 0)) > 0:
+            regular_season_best[lk] = {
+                "value":  round(_safe_float(best.get(uk)), 1),
+                "season": str(best.get("SEASON_ID") or ""),
+                "team":   str(best.get("TEAM_ABBREVIATION") or ""),
+            }
+
+    # ── Playoff Career Best (best single-season playoff average per stat) ─────
+    # SeasonTotalsPostSeason has per-season per-game averages.  We find the
+    # peak season for each stat across the full career (not range-filtered)
+    # so the "Playoff Best Season" card always shows the true career peak.
+    _PO_STAT_MAP = [
+        ("pts",  "PTS"),  ("reb",  "REB"),  ("ast",  "AST"),
+        ("stl",  "STL"),  ("blk",  "BLK"),  ("ftm",  "FTM"),
+        ("fta",  "FTA"),  ("fg3m", "FG3M"),
+    ]
+    po_all_raw = data.get("SeasonTotalsPostSeason", [])
+    playoff_best: dict = {}
+    for lk, uk in _PO_STAT_MAP:
+        best = max(po_all_raw, key=lambda r, k=uk: _safe_float(r.get(k, 0)), default=None)
+        if best and _safe_float(best.get(uk, 0)) > 0:
+            raw_season = str(best.get("SEASON_ID") or "")
+            # SEASON_ID is like "22009-10" (2 prefix chars) → strip to "2009-10"
+            season_label = raw_season[2:] if len(raw_season) > 7 else raw_season
+            playoff_best[lk] = {
+                "value":  round(_safe_float(best.get(uk)), 1),
+                "season": season_label,
+                "team":   str(best.get("TEAM_ABBREVIATION") or ""),
+            }
+
+    # ── Playoff Career Highs (single-game bests) ──────────────────────────────
+    # Uses leaguegamefinder to fetch all career playoff games in ONE API call,
+    # then finds the single-game max for each stat — mirrors how RS career_highs
+    # work but for playoff games.
+    _CH_STAT_MAP = [
+        ("pts",  "PTS"),  ("reb",  "REB"),  ("ast",  "AST"),
+        ("stl",  "STL"),  ("blk",  "BLK"),  ("ftm",  "FTM"),
+        ("fta",  "FTA"),  ("fg3m", "FG3M"),
+    ]
+    playoff_career_highs: dict = {}
+    if po_all_raw:  # only fetch if player has playoff appearances
+        try:
+            po_games = _fetch_all_player_games(player_id, "Playoffs")
+            for lk, uk in _CH_STAT_MAP:
+                best_game = max(po_games, key=lambda r, k=uk: _safe_float(r.get(k, 0)), default=None)
+                if best_game and _safe_float(best_game.get(uk, 0)) > 0:
+                    opp = _extract_opp(best_game.get("MATCHUP", ""))
+                    playoff_career_highs[lk] = {
+                        "value":    _safe_int(best_game.get(uk)),
+                        "date":     str(best_game.get("GAME_DATE") or ""),
+                        "opponent": opp,
+                    }
+        except Exception as e:
+            logger.warning(f"playoff career highs {player_id}: {e}")
+
     result = {
-        "seasons":         regular_seasons,
-        "playoff_seasons": playoff_seasons,
-        "career_totals":   _totals_from_raw(reg_raw),
-        "playoff_totals":  _totals_from_raw(post_raw),
+        "seasons":               regular_seasons,
+        "playoff_seasons":       playoff_seasons,
+        "career_totals":         _totals_from_raw(reg_raw),
+        "playoff_totals":        _totals_from_raw(post_raw),
+        "career_highs":          career_highs,
+        "regular_season_best":   regular_season_best,
+        "playoff_best":          playoff_best,
+        "playoff_career_highs":  playoff_career_highs,
     }
     # Pass the range back so the frontend can display it correctly
     if season_from:
@@ -584,6 +672,7 @@ def get_player_conditional_stats(
     player_id: int,
     condition_player_ids: list,
     all_active: bool        = True,
+    require_opponent: bool  = False,
     season_from: str        = DEFAULT_SEASON,
     season_to: str          = DEFAULT_SEASON,
     opponent_abbr: str      = "",
@@ -695,21 +784,25 @@ def get_player_conditional_stats(
     flat_sets = {cid: {g for g, _, _s in s} for cid, s in cond_id_sets.items()}
 
     if all_active:
-        # Intersection: games where ALL condition players also played that day
-        # AND were on the opposing team (not as teammates).
-        # Using flat game_id sets for the "played" check handles multi-team
-        # careers (e.g. Butler MIA→GSW) without needing opponent_abbr filtering.
-        # The additional _is_teammate guard ensures former-teammate games (e.g.
-        # Simmons + Embiid on PHI) are excluded — only true H2H matchups count.
         def _all_played(row):
             gid = _norm_game_id(row.get("Game_ID"))
             return all(gid in flat_sets[cid] for cid in condition_player_ids)
-        def _all_opponents(row):
-            return _all_played(row) and all(
-                not _is_teammate(row, cond_id_sets[cid])
-                for cid in condition_player_ids
-            )
-        matched  = [r for r in primary_rows if _all_opponents(r)]
+
+        if require_opponent:
+            # H2H mode: condition players must be on the OPPOSING team.
+            # Excludes shared-team games (e.g. Simmons/Embiid on PHI, Klay/Curry on GSW)
+            # so only true opponent matchups are counted.
+            def _match_fn(row):
+                return _all_played(row) and all(
+                    not _is_teammate(row, cond_id_sets[cid])
+                    for cid in condition_player_ids
+                )
+        else:
+            # Teammate "with" mode: condition players just need to have played that game
+            # (same team or not — caller is asking for games where both were active).
+            _match_fn = _all_played
+
+        matched  = [r for r in primary_rows if _match_fn(r)]
         opposite = [r for r in primary_rows if not _all_played(r)]
     else:
         # Complement of union: games where NONE of the condition players played at all
@@ -1687,3 +1780,92 @@ def get_leaderboard(
         "leaders":        leaders,
         "count":          len(leaders),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Player Awards / Accolades
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_player_awards(player_id: int) -> list:
+    """Fetch and aggregate player career awards into a badge list.
+
+    Returns a list of dicts ordered by prestige:
+        [{"label": "4× MVP", "tier": "gold"}, ...]
+
+    tier values:
+        'gold'   — MVP, FMVP, Champion, 1st All-NBA
+        'silver' — 2nd All-NBA
+        'bronze' — 3rd All-NBA
+        'blue'   — All-Star, DPOY, All-Defensive
+        'green'  — ROY
+        'orange' — 6MOY, MIP
+    """
+    try:
+        time.sleep(NBA_API_DELAY)
+        data = nba_http.get_parsed(
+            "playerawards",
+            params={"PlayerID": player_id},
+            timeout=10,
+        )
+        rows = data.get("PlayerAwards", [])
+    except Exception as e:
+        logger.warning(f"playerawards {player_id}: {e}")
+        return []
+
+    if not rows:
+        return []
+
+    mvp = fmvp = champ = allnba1 = allnba2 = allnba3 = 0
+    allstar = dpoy = alldef1 = alldef2 = roy = smoy = mip = 0
+
+    for row in rows:
+        desc     = (row.get("DESCRIPTION") or "").strip()
+        team_num = str(row.get("ALL_NBA_TEAM_NUMBER") or "").strip()
+
+        if desc == "NBA Most Valuable Player":
+            mvp += 1
+        elif desc == "NBA Finals Most Valuable Player":
+            fmvp += 1
+        elif desc == "NBA Champion":
+            champ += 1
+        elif desc == "All-NBA":
+            if   team_num == "1": allnba1 += 1
+            elif team_num == "2": allnba2 += 1
+            elif team_num == "3": allnba3 += 1
+        elif desc == "NBA All-Star":
+            allstar += 1
+        elif "All-Defensive" in desc:
+            if team_num == "1": alldef1 += 1
+            else:               alldef2 += 1
+        elif "Defensive Player" in desc:
+            dpoy += 1
+        elif "Rookie of the Year" in desc:
+            roy += 1
+        elif "Sixth Man" in desc or "6th Man" in desc:
+            smoy += 1
+        elif "Most Improved" in desc:
+            mip += 1
+
+    badges = []
+    def _add(label, tier):
+        badges.append({"label": label, "tier": tier})
+
+    def _n(n, singular, plural=None):
+        """'4× MVP' or '1× MVP'."""
+        return f"{n}× {plural or singular}"
+
+    if mvp:     _add(_n(mvp, "MVP"),            "gold")
+    if fmvp:    _add(_n(fmvp, "FMVP"),          "gold")
+    if champ:   _add(_n(champ, "Champ"),         "gold")
+    if allnba1: _add(_n(allnba1, "1st All-NBA"), "gold")
+    if allnba2: _add(_n(allnba2, "2nd All-NBA"), "silver")
+    if allnba3: _add(_n(allnba3, "3rd All-NBA"), "bronze")
+    if allstar: _add(_n(allstar, "All-Star"),    "blue")
+    if dpoy:    _add(_n(dpoy, "DPOY"),           "blue")
+    if alldef1: _add(_n(alldef1, "All-Def 1st"), "blue")
+    if alldef2: _add(_n(alldef2, "All-Def 2nd"), "blue")
+    if roy:     _add("ROY",                      "green")
+    if smoy:    _add(_n(smoy, "6MOY"),           "orange")
+    if mip:     _add(_n(mip, "MIP"),             "orange")
+
+    return badges

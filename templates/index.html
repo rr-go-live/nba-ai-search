@@ -155,6 +155,18 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .game-hi-pm.neg { color: #ff4d6d; }
 .game-hi-pm.neu { color: var(--muted); }
 
+/* Career High cards */
+.ch-card { display: flex; flex-direction: column; min-height: 220px; }
+.ch-card-title { font-family: 'Barlow Condensed', sans-serif; font-size: .58rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+.ch-card-subtitle { font-family: 'Barlow Condensed', sans-serif; font-size: .72rem; font-weight: 800; letter-spacing: .08em; color: var(--tp); margin-left: 6px; }
+.ch-filters { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-bottom: 18px; }
+.ch-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.ch-value { font-family: 'Barlow Condensed', sans-serif; font-size: 5.5rem; font-weight: 900; line-height: 1; }
+.ch-stat-lbl { font-size: .68rem; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin-top: 4px; font-weight: 600; }
+.ch-context { font-size: .63rem; color: var(--muted); margin-top: 16px; letter-spacing: .04em; }
+.ch-context strong { color: var(--fg-soft); font-weight: 600; }
+.ch-empty { font-size: .75rem; color: var(--muted); font-style: italic; padding: 20px 0; }
+
 /* Log */
 .log-section { margin-bottom: 48px; }
 .log-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
@@ -575,6 +587,29 @@ function renderResults(d) {
 }
 
 // ─── Player header ───────────────────────────────────────────────────────────
+// ─── Accolades badges ─────────────────────────────────────────────────────────
+var AWARD_TIER_STYLES = {
+  gold:   { bg: 'rgba(245,158,11,.15)', border: 'rgba(245,158,11,.5)',  color: '#f59e0b' },
+  silver: { bg: 'rgba(148,163,184,.15)',border: 'rgba(148,163,184,.5)', color: '#94a3b8' },
+  bronze: { bg: 'rgba(176,120,50,.15)', border: 'rgba(176,120,50,.45)', color: '#c8922a' },
+  blue:   { bg: 'rgba(59,130,246,.13)', border: 'rgba(59,130,246,.4)',  color: '#60a5fa' },
+  green:  { bg: 'rgba(34,197,94,.12)',  border: 'rgba(34,197,94,.35)',  color: '#22c55e' },
+  orange: { bg: 'rgba(249,115,22,.13)', border: 'rgba(249,115,22,.4)',  color: '#fb923c' },
+};
+
+function awardsHtml(awards) {
+  if (!awards || !awards.length) return '';
+  var pills = awards.map(function(a) {
+    var s = AWARD_TIER_STYLES[a.tier] || AWARD_TIER_STYLES.blue;
+    return '<span style="display:inline-block;font-size:.48rem;font-weight:700;'
+      + 'letter-spacing:.09em;text-transform:uppercase;white-space:nowrap;'
+      + 'background:' + s.bg + ';border:1px solid ' + s.border + ';'
+      + 'border-radius:3px;padding:2px 5px;color:' + s.color + '">'
+      + a.label + '</span>';
+  }).join('');
+  return '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px">' + pills + '</div>';
+}
+
 function playerHeaderHtml(player, rightHtml, extras, opts) {
   opts = opts || {};
   extras = extras || [];
@@ -594,11 +629,15 @@ function playerHeaderHtml(player, rightHtml, extras, opts) {
   var secondRow = opts.secondRow
     ? '<div class="meta-row meta-row-2">' + opts.secondRow + '</div>'
     : '';
+  var awardsRow = player.awards && player.awards.length
+    ? awardsHtml(player.awards)
+    : '';
   return '<div class="player-header">'
     + '<img class="phs" src="' + hs + '" onerror="this.style.display=\'none\'" alt="' + (player.name || '') + '">'
     + '<div style="flex:1"><div class="player-name">' + (player.name || '') + '</div>'
     + '<div class="meta-row">' + metas + '</div>'
     + secondRow
+    + awardsRow
     + '</div>'
     + (rightHtml || '')
     + '</div>';
@@ -881,14 +920,25 @@ function renderH2H(d, c) {
     if (isRetired) {
       secondary = '<div style="margin-top:5px">'
         + '<span style="display:inline-block;font-size:.52rem;font-weight:700;letter-spacing:.12em;'
-        + 'text-transform:uppercase;background:rgba(255,255,255,.07);'
-        + 'border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:2px 7px;'
-        + 'color:var(--muted)">RETIRED</span></div>';
-    } else if (nowTeam) {
-      secondary = '<div style="margin-top:4px;font-size:.58rem;font-weight:600;letter-spacing:.08em;'
-        + 'color:var(--muted);text-transform:uppercase">Now: <span style="color:var(--fg-soft)">'
-        + nowTeam + '</span></div>';
+        + 'text-transform:uppercase;background:rgba(176,120,50,.15);'
+        + 'border:1px solid rgba(176,120,50,.45);border-radius:4px;padding:2px 7px;'
+        + 'color:#c8922a">RETIRED</span></div>';
+    } else {
+      var activeLine = '<span style="display:inline-block;font-size:.52rem;font-weight:700;'
+        + 'letter-spacing:.12em;text-transform:uppercase;background:rgba(34,197,94,.12);'
+        + 'border:1px solid rgba(34,197,94,.35);border-radius:4px;padding:2px 7px;'
+        + 'color:#22c55e">ACTIVE</span>';
+      if (nowTeam) {
+        secondary = '<div style="margin-top:5px;display:flex;align-items:center;gap:7px">'
+          + activeLine
+          + '<span style="font-size:.58rem;font-weight:600;letter-spacing:.08em;'
+          + 'color:var(--muted);text-transform:uppercase">Now: <span style="color:var(--fg-soft)">'
+          + nowTeam + '</span></span></div>';
+      } else {
+        secondary = '<div style="margin-top:5px">' + activeLine + '</div>';
+      }
     }
+    var awardsBadges = awardsHtml(player.awards || []);
     return '<div class="h2h-head">'
       + '<img class="h2h-hs" src="' + hs + '" style="border:2px solid ' + col + ';border-radius:50%"'
       +   ' onerror="this.style.display=\'none\'" alt="' + name + '">'
@@ -896,6 +946,7 @@ function renderH2H(d, c) {
       +   '<div class="h2h-pname">' + name + '</div>'
       +   teamLblHtml
       +   secondary
+      +   awardsBadges
       + '</div>'
       + '</div>';
   }
@@ -954,34 +1005,86 @@ function renderCareer(d, c) {
       })
     : allPsn;
 
-  // Use career_totals from JSON (already filtered by backend).
-  // If frontend filtered further than backend did, recompute from filtered seasons.
-  var tot = d.career_totals || {};
-  if (hasRange && seasons.length > 0 && seasons.length < allSeasons.length) {
-    tot = computeTotalsFromSeasons(seasons) || tot;
-  }
+  // Career totals — recompute from filtered seasons when a date range is active
+  var rsTot = d.career_totals || {};
+  if (hasRange && seasons.length > 0 && seasons.length < allSeasons.length)
+    rsTot = computeTotalsFromSeasons(seasons) || rsTot;
+  var poTot = d.playoff_totals || {};
+  if (hasRange && psn.length > 0 && psn.length < allPsn.length)
+    poTot = computeTotalsFromSeasons(psn) || poTot;
 
-  var multiSeason = seasons.length > 1;
-  var gpLabel     = hasRange
-    ? (d.season_from + ' – ' + (d.season_to || ''))
-    : 'Career';
-  var gpMeta = '<div class="meta-tag">' + gpLabel + ' GP <span>' + (tot.gp || '') + '</span></div>';
+  var gpLabel = hasRange ? (d.season_from + ' – ' + (d.season_to || '')) : 'Career';
+  var gpMeta  = '<div class="meta-tag">' + gpLabel + ' GP <span>' + (rsTot.gp || '') + '</span></div>';
+
+  // Show top toggle only when playoff data exists for this player
+  var hasPlayoffData = psn.length > 0 || Object.keys(d.playoff_best || {}).length > 0;
 
   c.innerHTML = playerHeaderHtml(d.player, null, [gpMeta])
   + insightHtml(d.insight)
+  + (hasPlayoffData
+      ? '<div style="margin:20px 0 26px;display:flex;align-items:center">'
+        + '<div class="toggle-btns" id="career-mode-toggle" style="width:fit-content">'
+        + '<button class="on" data-cmode="rs">Regular Season</button>'
+        + '<button data-cmode="po">Playoffs</button>'
+        + '</div></div>'
+      : '')
   + '<div class="stat-grid" id="sg"></div>'
   + '<div class="donuts-row" id="donuts"></div>'
-  + (multiSeason
-      ? '<div class="charts-row"><div class="chart-card full">'
-        + '<div class="chart-title">PPG / RPG / APG — ' + gpLabel + '</div>'
-        + '<div class="chart-wrap tall"><canvas id="chart-career"></canvas></div></div></div>'
-      : '')
+  + '<div id="career-chart-area"></div>'
+  + '<div id="career-high-area"></div>'
   + '<div id="log-area"></div>';
 
-  buildStatCardsCareer('sg', tot);
-  buildDonuts('donuts', tot, null);
-  if (multiSeason) buildCareerChart('chart-career', seasons, d.player);
-  buildCareerTable('log-area', seasons, psn);
+  // Career high cards — always show all four cards (2 RS + 2 Playoffs)
+  buildCareerHighCard(
+    'career-high-area',
+    d.career_highs         || {},
+    d.regular_season_best  || {},
+    d.playoff_career_highs || {},
+    d.playoff_best         || {}
+  );
+
+  function renderCareerMode(mode) {
+    var isRS       = mode !== 'po';
+    var activeTot  = isRS ? rsTot : poTot;
+    var activeSns  = isRS ? seasons : psn;
+    var modeLabel  = isRS ? gpLabel : 'Playoffs';
+
+    buildStatCardsCareer('sg', activeTot);
+    buildDonuts('donuts', activeTot, null);
+
+    // Career trend chart
+    var ca = document.getElementById('career-chart-area');
+    if (ca) {
+      destroyChart('chart-career');
+      if (activeSns.length > 1) {
+        ca.innerHTML = '<div class="charts-row"><div class="chart-card full">'
+          + '<div class="chart-title">PPG / RPG / APG — ' + modeLabel + '</div>'
+          + '<div class="chart-wrap tall"><canvas id="chart-career"></canvas></div></div></div>';
+        buildCareerChart('chart-career', activeSns, d.player);
+      } else {
+        ca.innerHTML = '';
+      }
+    }
+
+    // Season table — always pass both RS and PO; sync inner toggle to active mode
+    buildCareerTable('log-area', seasons, psn);
+    if (!isRS && psn.length > 0) {
+      // Sync the table's inner toggle to Playoffs
+      if (window.switchCareer) window.switchCareer('post');
+    }
+  }
+
+  renderCareerMode('rs');
+
+  if (hasPlayoffData) {
+    document.getElementById('career-mode-toggle').addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-cmode]');
+      if (!btn) return;
+      this.querySelectorAll('button').forEach(function(b) { b.classList.remove('on'); });
+      btn.classList.add('on');
+      renderCareerMode(btn.dataset.cmode);
+    });
+  }
 }
 
 // GP-weighted averages computed client-side from season rows.
@@ -1003,6 +1106,167 @@ function computeTotalsFromSeasons(rows) {
     fg_pct:  wp('fg_pct'),  fga:  wp('fga'),
     fg3_pct: wp('fg3_pct'), fg3a: wp('fg3a'),
     ft_pct:  wp('ft_pct'),  fta:  wp('fta'),
+  };
+}
+
+// ─── Career High cards (RS + Playoffs side by side) ───────────────────────────
+// career_highs: { pts:{value,date,opponent}, ... }  — single-game RS career high
+// playoff_best: { pts:{value,season,team}, ... }    — best single-season PO avg
+// career_highs        — RS single-game career high per stat {value, date, opponent}
+// regular_season_best   — best single RS season avg per stat {value, season, team}
+// playoff_career_highs  — single-game playoff highs per stat {value, date, opponent}
+// playoff_best          — best single PO season avg per stat {value, season, team}
+function buildCareerHighCard(containerId, career_highs, regular_season_best, playoff_career_highs, playoff_best) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  career_highs        = career_highs        || {};
+  regular_season_best = regular_season_best || {};
+  playoff_career_highs = playoff_career_highs || {};
+  playoff_best        = playoff_best        || {};
+
+  var hasRS = Object.keys(career_highs).length > 0;
+  var hasPO = Object.keys(playoff_career_highs).length > 0 || Object.keys(playoff_best).length > 0;
+  if (!hasRS && !hasPO) return;
+
+  var fillColor = getComputedStyle(document.documentElement).getPropertyValue('--tp').trim() || '#f7941d';
+
+  var ALL_STATS = [
+    { key: 'pts', lbl: 'PTS' }, { key: 'reb', lbl: 'REB' }, { key: 'ast', lbl: 'AST' },
+    { key: 'stl', lbl: 'STL' }, { key: 'blk', lbl: 'BLK' },
+    { key: 'ftm', lbl: 'FTM' }, { key: 'fta', lbl: 'FTA' }, { key: 'fg3m', lbl: '3PM' },
+  ];
+
+  // Generic filter button
+  function filterBtn(prefix, key, lbl, isActive) {
+    return '<button onclick="' + prefix + 'Switch(\'' + key + '\')" id="' + prefix + '-btn-' + key + '" '
+      + 'style="font-family:\'Barlow Condensed\',sans-serif;font-size:.58rem;font-weight:700;'
+      + 'letter-spacing:.09em;text-transform:uppercase;border:1px solid rgba(255,255,255,.15);'
+      + 'border-radius:4px;padding:3px 8px;cursor:pointer;transition:all .15s;'
+      + 'background:' + (isActive ? 'rgba(255,255,255,.12)' : 'transparent') + ';'
+      + 'color:'      + (isActive ? 'var(--fg)'              : 'var(--muted)') + '">'
+      + lbl + '</button>';
+  }
+
+  // Shared section-level filter row (controls both cards in a section simultaneously)
+  function sectionFilterRow(prefix, keys, activeKey) {
+    return '<div class="ch-filters" style="margin-bottom:16px">'
+      + keys.map(function(s) { return filterBtn(prefix, s.key, s.lbl, s.key === activeKey); }).join('')
+      + '</div>';
+  }
+
+  // Generic card body
+  function cardBodyHtml(entry, lbl, contextLine) {
+    if (!entry) return '<div class="ch-body"><div class="ch-empty">No data</div></div>';
+    var val = typeof entry.value === 'number'
+      ? (Number.isInteger(entry.value) ? entry.value : entry.value.toFixed(1))
+      : (entry.value || '—');
+    return '<div class="ch-body">'
+      + '<div class="ch-value" style="color:' + fillColor + '">' + val + '</div>'
+      + '<div class="ch-stat-lbl">' + lbl + '</div>'
+      + (contextLine ? '<div class="ch-context">' + contextLine + '</div>' : '')
+      + '</div>';
+  }
+
+  // ── Regular Season section (Career High + Best Season) ────────────────────
+  var rsKeys   = ALL_STATS.filter(function(s) { return !!(career_highs[s.key] || regular_season_best[s.key]); });
+  var rsActive = career_highs['pts'] || regular_season_best['pts'] ? 'pts' : ((rsKeys[0] || {}).key || 'pts');
+
+  function rsCareerHighBody(key) {
+    var e  = career_highs[key];
+    var sk = ALL_STATS.find(function(s) { return s.key === key; });
+    if (!e || !sk) return '<div class="ch-body"><div class="ch-empty">No data</div></div>';
+    return cardBodyHtml(e, sk.lbl,
+      (e.date || '') + (e.opponent ? ' &middot; <strong>vs ' + e.opponent + '</strong>' : ''));
+  }
+
+  function rsBestSeasonBody(key) {
+    var e  = regular_season_best[key];
+    var sk = ALL_STATS.find(function(s) { return s.key === key; });
+    if (!e || !sk) return '<div class="ch-body"><div class="ch-empty">No data</div></div>';
+    return cardBodyHtml(e, sk.lbl + ' per game',
+      (e.season || '') + (e.team ? ' &middot; <strong>' + e.team + '</strong>' : ''));
+  }
+
+  // ── Playoffs section (Playoff Career High + Best Playoff Season) ───────────
+  var poKeys   = ALL_STATS.filter(function(s) { return !!(playoff_career_highs[s.key] || playoff_best[s.key]); });
+  var poActive = playoff_career_highs['pts'] || playoff_best['pts'] ? 'pts' : ((poKeys[0] || {}).key || 'pts');
+
+  function poCareerHighBody(key) {
+    var e  = playoff_career_highs[key];  // single-game playoff high (date + opponent)
+    var sk = ALL_STATS.find(function(s) { return s.key === key; });
+    if (!e || !sk) return '<div class="ch-body"><div class="ch-empty">No data</div></div>';
+    return cardBodyHtml(e, sk.lbl,
+      (e.date || '') + (e.opponent ? ' &middot; <strong>vs ' + e.opponent + '</strong>' : ''));
+  }
+
+  function poCareerAvgBody(key) {
+    var e  = playoff_best[key];  // best single-season PO avg (season + team)
+    var sk = ALL_STATS.find(function(s) { return s.key === key; });
+    if (!e || !sk) return '<div class="ch-body"><div class="ch-empty">No data</div></div>';
+    return cardBodyHtml(e, sk.lbl + ' per game',
+      (e.season || '') + (e.team ? ' &middot; <strong>' + e.team + '</strong>' : ''));
+  }
+
+  // ── Build section HTML ────────────────────────────────────────────────────
+  function sectionHtml(label, prefix, keys, activeKey, leftFn, leftTitle, rightFn, rightTitle) {
+    return '<div style="margin-bottom:28px">'
+      // Section header
+      + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.58rem;font-weight:700;'
+      +   'letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">'
+      +   label + '</div>'
+      // Shared filter row
+      + sectionFilterRow(prefix, keys, activeKey)
+      // Two cards side by side
+      + '<div class="charts-row" style="margin-bottom:0">'
+      +   '<div class="chart-card ch-card">'
+      +     '<div class="ch-card-title">' + leftTitle + '</div>'
+      +     '<div id="' + prefix + '-left">' + leftFn(activeKey) + '</div>'
+      +   '</div>'
+      +   '<div class="chart-card ch-card">'
+      +     '<div class="ch-card-title">' + rightTitle + '</div>'
+      +     '<div id="' + prefix + '-right">' + rightFn(activeKey) + '</div>'
+      +   '</div>'
+      + '</div>'
+      + '</div>';
+  }
+
+  var html = '';
+  if (hasRS) {
+    html += sectionHtml(
+      'Regular Season', 'chRs', rsKeys, rsActive,
+      rsCareerHighBody,   'Career High',
+      rsBestSeasonBody,   'Best Season Averages'
+    );
+  }
+  if (hasPO && poKeys.length > 0) {
+    html += sectionHtml(
+      'Playoffs', 'chPo', poKeys, poActive,
+      poCareerHighBody,   'Playoff Career High',
+      poCareerAvgBody,    'Best Playoff Season'
+    );
+  }
+  container.innerHTML = html;
+
+  // ── Switch handlers — update both left and right cards simultaneously ─────
+  function updateSection(prefix, key, leftFn, rightFn) {
+    var l = document.getElementById(prefix + '-left');
+    var r = document.getElementById(prefix + '-right');
+    if (l) l.innerHTML = leftFn(key);
+    if (r) r.innerHTML = rightFn(key);
+    document.querySelectorAll('[id^="' + prefix + '-btn-"]').forEach(function(btn) {
+      var k = btn.id.replace(prefix + '-btn-', '');
+      btn.style.background = k === key ? 'rgba(255,255,255,.12)' : 'transparent';
+      btn.style.color      = k === key ? 'var(--fg)' : 'var(--muted)';
+    });
+  }
+
+  window.chRsSwitch = function(key) {
+    rsActive = key;
+    updateSection('chRs', key, rsCareerHighBody, rsBestSeasonBody);
+  };
+  window.chPoSwitch = function(key) {
+    poActive = key;
+    updateSection('chPo', key, poCareerHighBody, poCareerAvgBody);
   };
 }
 
@@ -1226,17 +1490,95 @@ function buildCharts(containerId, splits, avg, log, oppAbbr) {
   var orderedSplits = splits.slice().reverse();
   var labels = orderedSplits.map(function(s) { return s.season; });
 
+  // Career high card — filterable by stat
+  var fullLog = log || [];
+  var chStats = [
+    { key: 'pts',  lbl: 'PTS',  sortKey: function(r) { return r.pts || 0; } },
+    { key: 'reb',  lbl: 'REB',  sortKey: function(r) { return r.reb || 0; } },
+    { key: 'ast',  lbl: 'AST',  sortKey: function(r) { return r.ast || 0; } },
+    { key: 'ftm',  lbl: 'FTM',  sortKey: function(r) { return r.ftm || 0; } },
+    { key: 'fta',  lbl: 'FTA',  sortKey: function(r) { return r.fta || 0; } },
+  ];
+  var chActive = 'pts';
+
+  function careerHighGame(statKey) {
+    if (!fullLog.length) return null;
+    var sk = chStats.find(function(s) { return s.key === statKey; });
+    if (!sk) return null;
+    return fullLog.slice().sort(function(a, b) { return sk.sortKey(b) - sk.sortKey(a); })[0];
+  }
+
+  function careerHighCardHtml(statKey) {
+    var game = careerHighGame(statKey);
+    var sk   = chStats.find(function(s) { return s.key === statKey; });
+    if (!game || !sk) return '<p style="color:var(--muted);font-size:.75rem;margin-top:16px">No data</p>';
+    var val  = sk.sortKey(game);
+    var pm   = game.plus_minus || 0;
+    var pmCls = pm > 0 ? 'pos' : pm < 0 ? 'neg' : 'neu';
+    var pmStr = pm > 0 ? '+' + pm : String(pm);
+    var res  = (game.result || '').toUpperCase();
+    return '<div class="game-hi-meta">'
+      + (game.date || '') + ' &nbsp;·&nbsp; ' + (game.matchup || '')
+      + '<span class="game-hi-result ' + res + '">' + (res || '–') + '</span>'
+      + '</div>'
+      + '<div class="game-hi-pts-row">'
+      +   '<span class="game-hi-pts" style="color:' + fillColor + '">' + val + '</span>'
+      +   '<span class="game-hi-pts-lbl">' + sk.lbl + '</span>'
+      + '</div>'
+      + '<div class="game-hi-stats">'
+      +   '<span>' + (game.pts || 0) + ' PTS</span>'
+      +   '<span>' + (game.reb || 0) + ' REB</span>'
+      +   '<span>' + (game.ast || 0) + ' AST</span>'
+      +   '<span>' + (game.stl || 0) + ' STL</span>'
+      +   '<span>' + (game.blk || 0) + ' BLK</span>'
+      + '</div>'
+      + '<div class="game-hi-shooting">'
+      +   '<span>' + (game.fgm || 0) + '/' + (game.fga || 0) + ' FG</span>'
+      +   '<span>' + (game.fg3m || 0) + '/' + (game.fg3a || 0) + ' 3P</span>'
+      +   '<span>' + (game.ftm || 0) + '/' + (game.fta || 0) + ' FT</span>'
+      + '</div>'
+      + '<div class="game-hi-pm ' + pmCls + '">' + pmStr + ' +/-</div>';
+  }
+
+  var chFilterBtns = chStats.map(function(s) {
+    return '<button onclick="chSwitch(\'' + s.key + '\')" id="ch-btn-' + s.key + '" '
+      + 'style="font-family:\'Barlow Condensed\',sans-serif;font-size:.6rem;font-weight:700;'
+      + 'letter-spacing:.1em;text-transform:uppercase;border:1px solid rgba(255,255,255,.15);'
+      + 'border-radius:4px;padding:3px 9px;cursor:pointer;transition:all .15s;'
+      + 'background:' + (s.key === chActive ? 'rgba(255,255,255,.12)' : 'transparent') + ';'
+      + 'color:' + (s.key === chActive ? 'var(--fg)' : 'var(--muted)') + '">'
+      + s.lbl + '</button>';
+  }).join('');
+
+  var careerHighCard = '<div class="chart-card game-hi-card" id="ch-card">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+    +   '<div class="chart-title" style="margin-bottom:0">Career High</div>'
+    +   '<div style="display:flex;gap:4px" id="ch-filters">' + chFilterBtns + '</div>'
+    + '</div>'
+    + '<div id="ch-body">' + careerHighCardHtml(chActive) + '</div>'
+    + '</div>';
+
+  window.chSwitch = function(key) {
+    chActive = key;
+    document.getElementById('ch-body').innerHTML = careerHighCardHtml(key);
+    document.querySelectorAll('[id^="ch-btn-"]').forEach(function(btn) {
+      var k = btn.id.replace('ch-btn-', '');
+      var active = k === key;
+      btn.style.background = active ? 'rgba(255,255,255,.12)' : 'transparent';
+      btn.style.color = active ? 'var(--fg)' : 'var(--muted)';
+    });
+  };
+
   // Best / worst game by PTS from the full game log
-  var sortedLog = (log || []).slice().sort(function(a, b) {
-    if (b.pts !== a.pts) return b.pts - a.pts;       // desc by PTS
-    return (b.plus_minus || 0) - (a.plus_minus || 0); // tiebreak: +/-
+  var sortedLog = fullLog.slice().sort(function(a, b) {
+    if (b.pts !== a.pts) return b.pts - a.pts;
+    return (b.plus_minus || 0) - (a.plus_minus || 0);
   });
-  var bestGame  = sortedLog[0]  || null;
   var worstGame = sortedLog[sortedLog.length - 1] || null;
 
   var oppLabel = oppAbbr ? ' VS ' + oppAbbr : '';
 
-  container.innerHTML = gameHighlightHtml('Best game' + oppLabel, bestGame, fillColor)
+  container.innerHTML = careerHighCard
     + gameHighlightHtml('Worst game' + oppLabel, worstGame, fillColor)
     + '<div class="chart-card full">'
     + '<div class="chart-title">PTS / REB / AST trend (oldest → newest)</div>'
@@ -1587,9 +1929,9 @@ function gameLogHtml(rows, sortCol, sortDir) {
     + th('STL',     'stl')
     + th('BLK',     'blk')
     + th('TOV',     'tov')
-    + th('FG% (M/A)', 'fg_pct')
-    + th('3P% (M/A)', 'fg3_pct')
-    + th('FT% (M/A)', 'ft_pct')
+    + th('FG% (FGM/FGA)', 'fg_pct')
+    + th('3P% (3PM/3PA)', 'fg3_pct')
+    + th('FT% (FTM/FTA)', 'ft_pct')
     + th('+/-',     'plus_minus')
     + '</tr></thead>'
     + '<tbody>' + tbody + '</tbody>'
@@ -1850,6 +2192,7 @@ function renderCompare(d, c) {
       +     (p.team ? '<div style="font-size:.58rem;color:var(--muted);margin-top:1px">' + p.team + '</div>' : '')
       +     (seriesCount ? '<div style="font-size:.6rem;color:' + col + ';margin-top:2px">'
       +       seriesCount + ' series</div>' : '')
+      +     (p.awards && p.awards.length ? awardsHtml(p.awards) : '')
       +   '</div>'
       + '</div>'
       // Big PPG — cards always show per-game averages (table below shows totals)

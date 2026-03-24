@@ -113,7 +113,8 @@ TOOL_DEFINITIONS = [
                     "items": {"type": "integer"},
                     "description": "List of condition player IDs (1 for single, 2+ for multi-inactive)"
                 },
-                "all_active":           {"type": "boolean", "description": "true=H2H/all active, false=inactive split"},
+                "all_active":           {"type": "boolean", "description": "true=both players active (H2H or teammate 'with' stats), false=inactive split"},
+                "require_opponent":     {"type": "boolean", "description": "true=H2H only (condition player must be on OPPOSING team, excludes shared-team games). false=teammate 'with' stats (condition player just needs to have played). Always set true for H2H queries, never set true for 'stats with teammate' queries."},
                 "season_from":          {"type": "string",  "description": "Start season"},
                 "season_to":            {"type": "string",  "description": "End season"},
                 "opponent_abbr":        {"type": "string",  "description": "Optional opponent team filter — do NOT use for H2H (all_active=true); only use for inactive splits (all_active=false)."},
@@ -264,6 +265,7 @@ def execute_tool(tool_name: str, tool_input: dict) -> dict:
             player_id            = tool_input["player_id"],
             condition_player_ids = tool_input["condition_player_ids"],
             all_active           = tool_input["all_active"],
+            require_opponent     = tool_input.get("require_opponent", False),
             season_from          = tool_input.get("season_from", "2012-13"),
             season_to            = tool_input.get("season_to",   nba.DEFAULT_SEASON),
             opponent_abbr        = tool_input.get("opponent_abbr", ""),

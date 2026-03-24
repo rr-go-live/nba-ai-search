@@ -1,0 +1,320 @@
+<svg width="900" height="590" viewBox="0 0 900 590"
+     xmlns="http://www.w3.org/2000/svg"
+     font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+
+  <defs>
+    <!-- Subtle dot grid -->
+    <pattern id="grid" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="0.9" fill="#1c2133"/>
+    </pattern>
+    <!-- Arrow markers -->
+    <marker id="ah" viewBox="0 0 8 6" refX="7" refY="3"
+            markerWidth="5" markerHeight="4" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#4d9eff"/>
+    </marker>
+    <marker id="ah-o" viewBox="0 0 8 6" refX="7" refY="3"
+            markerWidth="5" markerHeight="4" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#ff6b35"/>
+    </marker>
+    <marker id="ah-g" viewBox="0 0 8 6" refX="7" refY="3"
+            markerWidth="5" markerHeight="4" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#4caf7d"/>
+    </marker>
+    <marker id="ah-m" viewBox="0 0 8 6" refX="7" refY="3"
+            markerWidth="5" markerHeight="4" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- ── Background ── -->
+  <rect width="900" height="590" fill="#0f1117"/>
+  <rect width="900" height="590" fill="url(#grid)"/>
+
+  <!-- ── Title ── -->
+  <text x="450" y="33" text-anchor="middle"
+        font-size="15" font-weight="700" fill="#e2e8f0" letter-spacing="0.3">
+    NBA AI Search — System Architecture
+  </text>
+  <text x="450" y="50" text-anchor="middle" font-size="9" fill="#475569">
+    Flask · Gemini 2.5 Flash · stats.nba.com · basketball-reference.com
+  </text>
+
+  <!-- ════════════════════════════════════════════
+       ROW 1 — CLIENT  (y 60–140)
+       ════════════════════════════════════════════ -->
+  <rect x="20" y="60" width="860" height="80" rx="10"
+        fill="#161b27" stroke="#252d3d" stroke-width="1"/>
+  <text x="37" y="77" font-size="7" font-weight="700"
+        fill="#9b7ff7" letter-spacing="2">CLIENT</text>
+
+  <!-- Query input box -->
+  <rect x="30" y="80" width="292" height="50" rx="7"
+        fill="#0f1117" stroke="#2d3550" stroke-width="1"/>
+  <text x="176" y="98" text-anchor="middle"
+        font-size="9.5" font-weight="600" fill="#c4b5fd">Browser — Query Input</text>
+  <text x="176" y="112" text-anchor="middle"
+        font-size="8" fill="#64748b">"Tatum career"  ·  "Jokic vs Warriors"  ·  "LeBron highs"</text>
+  <text x="176" y="124" text-anchor="middle"
+        font-size="7" fill="#374151">natural language  ·  templates/index.html</text>
+
+  <!-- Center label -->
+  <text x="450" y="99" text-anchor="middle" font-size="8" fill="#374151">← SSE events</text>
+  <text x="450" y="113" text-anchor="middle" font-size="8" fill="#374151">POST query →</text>
+
+  <!-- Result render box -->
+  <rect x="578" y="80" width="292" height="50" rx="7"
+        fill="#0f1117" stroke="#2d3550" stroke-width="1"/>
+  <text x="724" y="98" text-anchor="middle"
+        font-size="9.5" font-weight="600" fill="#86efac">Browser — Result Render</text>
+  <text x="724" y="112" text-anchor="middle"
+        font-size="8" fill="#64748b">Career · Highs · Accolades · H2H · Compare · Charts</text>
+  <text x="724" y="124" text-anchor="middle"
+        font-size="7" fill="#374151">vanilla JS  ·  no build step  ·  CSS grid</text>
+
+  <!-- ── Gap A — y 140 to 178 ── -->
+  <!-- POST /api/query -->
+  <line x1="200" y1="140" x2="182" y2="175"
+        stroke="#4d9eff" stroke-width="1.5" marker-end="url(#ah)"/>
+  <rect x="154" y="150" width="92" height="13" rx="3" fill="#0f1117"/>
+  <text x="200" y="160" text-anchor="middle"
+        font-size="7.5" fill="#4d9eff">POST /api/query</text>
+
+  <!-- SSE stream back up -->
+  <line x1="700" y1="175" x2="718" y2="140"
+        stroke="#4caf7d" stroke-width="1.5" marker-end="url(#ah-g)"/>
+  <rect x="652" y="150" width="106" height="13" rx="3" fill="#0f1117"/>
+  <text x="705" y="160" text-anchor="middle"
+        font-size="7.5" fill="#4caf7d">SSE /api/stream</text>
+
+  <!-- ════════════════════════════════════════════
+       ROW 2 — FLASK + AGENT  (y 178–315)
+       ════════════════════════════════════════════ -->
+
+  <!-- Flask box -->
+  <rect x="20" y="178" width="212" height="137" rx="10"
+        fill="#161b27" stroke="#252d3d" stroke-width="1"/>
+  <text x="37" y="196" font-size="7" font-weight="700"
+        fill="#4d9eff" letter-spacing="2">SERVER</text>
+  <text x="126" y="213" text-anchor="middle"
+        font-size="12" font-weight="700" fill="#e2e8f0">app.py</text>
+  <text x="126" y="228" text-anchor="middle"
+        font-size="8.5" fill="#64748b">Flask + threading</text>
+
+  <rect x="35" y="236" width="182" height="19" rx="4"
+        fill="#0f1117" stroke="#252d3d" stroke-width="1"/>
+  <text x="126" y="249" text-anchor="middle"
+        font-size="7.5" fill="#94a3b8">POST /api/query → job_id</text>
+
+  <rect x="35" y="261" width="182" height="19" rx="4"
+        fill="#0f1117" stroke="#252d3d" stroke-width="1"/>
+  <text x="126" y="274" text-anchor="middle"
+        font-size="7.5" fill="#94a3b8">daemon thread per query</text>
+
+  <rect x="35" y="286" width="182" height="19" rx="4"
+        fill="#0f1117" stroke="#252d3d" stroke-width="1"/>
+  <text x="126" y="299" text-anchor="middle"
+        font-size="7.5" fill="#4caf7d">GET /api/stream/:id  →  SSE</text>
+
+  <!-- Flask → Agent spawn arrow -->
+  <line x1="234" y1="247" x2="264" y2="247"
+        stroke="#4d9eff" stroke-width="1.5" marker-end="url(#ah)"/>
+  <text x="249" y="243" text-anchor="middle"
+        font-size="7" fill="#4d9eff">spawn</text>
+
+  <!-- ── Agent Loop box (featured) ── -->
+  <rect x="266" y="178" width="614" height="137" rx="10"
+        fill="#161b27" stroke="#ff6b35" stroke-width="1.5"/>
+  <text x="284" y="196" font-size="7" font-weight="700"
+        fill="#ff6b35" letter-spacing="2">AGENT LOOP</text>
+  <text x="872" y="196" text-anchor="end"
+        font-size="7" fill="#374151">agent.py  ·  max 12 iterations</text>
+
+  <!-- Think -->
+  <rect x="280" y="202" width="156" height="46" rx="6"
+        fill="#0f1117" stroke="#2d3550" stroke-width="1"/>
+  <text x="358" y="219" text-anchor="middle"
+        font-size="9" font-weight="700" fill="#e2e8f0">Think</text>
+  <text x="358" y="232" text-anchor="middle"
+        font-size="7.5" fill="#64748b">Gemini 2.5 Flash prompt</text>
+  <text x="358" y="243" text-anchor="middle"
+        font-size="7" fill="#475569">selects next tool to call</text>
+
+  <!-- Think → Act -->
+  <line x1="438" y1="225" x2="458" y2="225"
+        stroke="#ff6b35" stroke-width="1.5" marker-end="url(#ah-o)"/>
+
+  <!-- Act -->
+  <rect x="460" y="202" width="156" height="46" rx="6"
+        fill="#0f1117" stroke="#2d3550" stroke-width="1"/>
+  <text x="538" y="219" text-anchor="middle"
+        font-size="9" font-weight="700" fill="#e2e8f0">Act</text>
+  <text x="538" y="232" text-anchor="middle"
+        font-size="7.5" fill="#64748b">execute_tool()</text>
+  <text x="538" y="243" text-anchor="middle"
+        font-size="7" fill="#475569">calls nba_stats_client</text>
+
+  <!-- Act → Observe -->
+  <line x1="618" y1="225" x2="638" y2="225"
+        stroke="#ff6b35" stroke-width="1.5" marker-end="url(#ah-o)"/>
+
+  <!-- Observe -->
+  <rect x="640" y="202" width="228" height="46" rx="6"
+        fill="#0f1117" stroke="#2d3550" stroke-width="1"/>
+  <text x="754" y="219" text-anchor="middle"
+        font-size="9" font-weight="700" fill="#e2e8f0">Observe</text>
+  <text x="754" y="232" text-anchor="middle"
+        font-size="7.5" fill="#64748b">_merge_raw_logs()</text>
+  <text x="754" y="243" text-anchor="middle"
+        font-size="7" fill="#475569">structured JSON result</text>
+
+  <!-- Feedback loop — rounded rect path below the three boxes -->
+  <path d="M 866,225 L 876,225 L 876,278 L 268,278 L 268,225 L 280,225"
+        stroke="#ff6b35" stroke-width="1" fill="none"
+        stroke-dasharray="5,3" marker-end="url(#ah-o)"/>
+  <!-- Label on the feedback path -->
+  <rect x="518" y="270" width="128" height="13" rx="3" fill="#161b27"/>
+  <text x="582" y="280" text-anchor="middle"
+        font-size="7.5" fill="#ff6b35">loop until done  ·  max 12 iters</text>
+
+  <!-- SSE event types emitted -->
+  <text x="573" y="305" text-anchor="middle"
+        font-size="7.5" fill="#475569">
+    emits: thinking · tool_start · tool_result · narrative · result · done
+  </text>
+
+  <!-- ── Gap B — y 315 to 353 ── -->
+  <!-- tool_call down -->
+  <line x1="390" y1="315" x2="390" y2="350"
+        stroke="#ff6b35" stroke-width="1.5" marker-end="url(#ah-o)"/>
+  <rect x="348" y="326" width="66" height="13" rx="3" fill="#0f1117"/>
+  <text x="381" y="336" text-anchor="middle"
+        font-size="7.5" fill="#ff6b35">tool_call</text>
+
+  <!-- tool_responses up -->
+  <line x1="510" y1="350" x2="510" y2="315"
+        stroke="#4d9eff" stroke-width="1.5" marker-end="url(#ah)"/>
+  <rect x="456" y="326" width="108" height="13" rx="3" fill="#0f1117"/>
+  <text x="510" y="336" text-anchor="middle"
+        font-size="7.5" fill="#4d9eff">tool_responses</text>
+
+  <!-- ════════════════════════════════════════════
+       ROW 3 — TOOLS  (y 353–428)
+       ════════════════════════════════════════════ -->
+  <rect x="20" y="353" width="860" height="75" rx="10"
+        fill="#161b27" stroke="#252d3d" stroke-width="1"/>
+  <text x="37" y="370" font-size="7" font-weight="700"
+        fill="#e3b341" letter-spacing="2">TOOLS</text>
+  <text x="863" y="370" text-anchor="end"
+        font-size="7" fill="#374151">tools.py  ·  nba_stats_client.py  ·  nba_http.py</text>
+
+  <!-- 6 chips — w=132, gap=9, start x=29 -->
+  <rect x="29" y="376" width="132" height="42" rx="6"
+        fill="#0f1117" stroke="#2d3550" stroke-width="1"/>
+  <text x="95" y="391" text-anchor="middle"
+        font-size="7.5" font-weight="600" fill="#e2e8f0">get_career_stats</text>
+  <text x="95" y="403" text-anchor="middle"
+        font-size="6.5" fill="#64748b">playercareerstats</text>
+  <text x="95" y="413" text-anchor="middle"
+        font-size="6.5" fill="#374151">CareerHighs · playoff highs</text>
+
+  <rect x="171" y="376" width="132" height="42" rx="6"
+        fill="#0f1117" stroke="#2d3550" stroke-width="1"/>
+  <text x="237" y="391" text-anchor="middle"
+        font-size="7.5" font-weight="600" fill="#e2e8f0">get_stats_vs_team</text>
+  <text x="237" y="403" text-anchor="middle"
+        font-size="6.5" fill="#64748b">playergamelog</text>
+  <text x="237" y="413" text-anchor="middle"
+        font-size="6.5" fill="#374151">filtered by opponent</text>
+
+  <rect x="313" y="376" width="132" height="42" rx="6"
+        fill="#0f1117" stroke="#2d3550" stroke-width="1"/>
+  <text x="379" y="391" text-anchor="middle"
+        font-size="7.5" font-weight="600" fill="#e2e8f0">get_conditional_stats</text>
+  <text x="379" y="403" text-anchor="middle"
+        font-size="6.5" fill="#64748b">w/ or w/o player</text>
+  <text x="379" y="413" text-anchor="middle"
+        font-size="6.5" fill="#374151">H2H · inactive splits</text>
+
+  <rect x="455" y="376" width="132" height="42" rx="6"
+        fill="#0f1117" stroke="#2d3550" stroke-width="1"/>
+  <text x="521" y="391" text-anchor="middle"
+        font-size="7.5" font-weight="600" fill="#e2e8f0">get_multi_player</text>
+  <text x="521" y="403" text-anchor="middle"
+        font-size="6.5" fill="#64748b">side-by-side compare</text>
+  <text x="521" y="413" text-anchor="middle"
+        font-size="6.5" fill="#374151">up to 5 players</text>
+
+  <rect x="597" y="376" width="132" height="42" rx="6"
+        fill="#0f1117" stroke="#2d3550" stroke-width="1"/>
+  <text x="663" y="391" text-anchor="middle"
+        font-size="7.5" font-weight="600" fill="#e2e8f0">get_leaderboard</text>
+  <text x="663" y="403" text-anchor="middle"
+        font-size="6.5" fill="#64748b">leaguedashplayerstats</text>
+  <text x="663" y="413" text-anchor="middle"
+        font-size="6.5" fill="#374151">BBRef fallback (current)</text>
+
+  <rect x="739" y="376" width="141" height="42" rx="6"
+        fill="#0f1117" stroke="#2d3550" stroke-width="1"/>
+  <text x="809" y="391" text-anchor="middle"
+        font-size="7.5" font-weight="600" fill="#e2e8f0">get_player_awards</text>
+  <text x="809" y="403" text-anchor="middle"
+        font-size="6.5" fill="#64748b">playerawards</text>
+  <text x="809" y="413" text-anchor="middle"
+        font-size="6.5" fill="#374151">MVP · FMVP · All-Star…</text>
+
+  <!-- ── Gap C — y 428 to 463 ── -->
+  <!-- arrow to stats.nba.com -->
+  <line x1="270" y1="428" x2="270" y2="460"
+        stroke="#64748b" stroke-width="1.5" marker-end="url(#ah-m)"/>
+  <rect x="213" y="438" width="96" height="13" rx="3" fill="#0f1117"/>
+  <text x="261" y="448" text-anchor="middle"
+        font-size="7.5" fill="#64748b">Akamai cookie session</text>
+
+  <!-- arrow to basketball-reference -->
+  <line x1="663" y1="428" x2="663" y2="460"
+        stroke="#64748b" stroke-width="1.5" marker-end="url(#ah-m)"/>
+  <rect x="615" y="438" width="80" height="13" rx="3" fill="#0f1117"/>
+  <text x="655" y="448" text-anchor="middle"
+        font-size="7.5" fill="#64748b">HTML scrape</text>
+
+  <!-- ════════════════════════════════════════════
+       ROW 4 — DATA SOURCES  (y 463–548)
+       ════════════════════════════════════════════ -->
+
+  <!-- stats.nba.com -->
+  <rect x="20" y="463" width="420" height="85" rx="10"
+        fill="#161b27" stroke="#252d3d" stroke-width="1"/>
+  <text x="37" y="480" font-size="7" font-weight="700"
+        fill="#4caf7d" letter-spacing="2">DATA</text>
+  <text x="230" y="480" text-anchor="middle"
+        font-size="11" font-weight="700" fill="#e2e8f0">stats.nba.com</text>
+  <text x="230" y="496" text-anchor="middle"
+        font-size="8" fill="#64748b">nba_http.py  ·  cookie-harvested requests session</text>
+  <text x="230" y="510" text-anchor="middle"
+        font-size="7.5" fill="#475569">playercareerstats  ·  playergamelog  ·  playerawards</text>
+  <text x="230" y="522" text-anchor="middle"
+        font-size="7.5" fill="#475569">leaguegamefinder  ·  leaguedashplayerstats</text>
+  <text x="230" y="535" text-anchor="middle"
+        font-size="7" fill="#374151">cookies refreshed every 10 min  ·  0.6 s polite delay</text>
+
+  <!-- basketball-reference.com -->
+  <rect x="460" y="463" width="420" height="85" rx="10"
+        fill="#161b27" stroke="#252d3d" stroke-width="1"/>
+  <text x="670" y="480" text-anchor="middle"
+        font-size="11" font-weight="700" fill="#e2e8f0">basketball-reference.com</text>
+  <text x="670" y="496" text-anchor="middle"
+        font-size="8" fill="#64748b">bbref_client.py  ·  fallback only</text>
+  <text x="670" y="510" text-anchor="middle"
+        font-size="7.5" fill="#475569">game logs — 2025-26 season (NBA API returns empty)</text>
+  <text x="670" y="522" text-anchor="middle"
+        font-size="7.5" fill="#475569">leaderboards — current-season rankings</text>
+  <text x="670" y="535" text-anchor="middle"
+        font-size="7" fill="#374151">4 s rate-limit delay  ·  returns [] on HTTP 429</text>
+
+  <!-- ── Footer ── -->
+  <line x1="20" y1="558" x2="880" y2="558" stroke="#1e2332" stroke-width="1"/>
+  <text x="450" y="574" text-anchor="middle" font-size="7.5" fill="#374151">
+    ~$0.001 / query  ·  usage logged to usage_data/session_*.json  ·  Gemini 2.5 Flash: $0.075 / 1M in · $0.30 / 1M out
+  </text>
+
+</svg>

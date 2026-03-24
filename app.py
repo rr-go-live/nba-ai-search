@@ -20,8 +20,10 @@ SSE EVENT TYPES (consumed by frontend JS):
   error       — error message
 """
 
+import atexit
 import json
 import logging
+import os
 import threading
 import uuid
 from datetime import datetime
@@ -34,6 +36,104 @@ from flask_cors import CORS
 
 from config import FLASK_HOST, FLASK_PORT
 from agent import NBAStatsAgent
+
+# ── Gemini 2.5 Flash pricing (USD per 1M tokens, as of 2025) ─────────────────
+PRICE_INPUT_PER_M  = 0.075   # $0.075 / 1M input tokens
+PRICE_OUTPUT_PER_M = 0.30    # $0.30  / 1M output tokens
+
+# ── Session usage store ───────────────────────────────────────────────────────
+SESSION_START    = datetime.utcnow()
+SESSION_START_ISO = SESSION_START.isoformat()
+
+# usage_data/ folder — one JSON file per server session
+USAGE_DIR = "usage_data"
+os.makedirs(USAGE_DIR, exist_ok=True)
+
+# File name: usage_data/session_2025-03-21T14-30-00.json  (colons → hyphens)
+_safe_ts    = SESSION_START.strftime("%Y-%m-%dT%H-%M-%S")
+SESSION_FILE = os.path.join(USAGE_DIR, f"session_{_safe_ts}.json")
+
+# In-memory query map: { query_text: { ...cost fields... } }
+QUERY_MAP:  dict = {}
+USAGE_LOCK       = threading.Lock()
+
+
+def _compute_cost(input_tok: int, output_tok: int) -> tuple[float, float]:
+    """Return (input_cost, output_cost) in USD."""
+    return (
+        input_tok  / 1_000_000 * PRICE_INPUT_PER_M,
+        output_tok / 1_000_000 * PRICE_OUTPUT_PER_M,
+    )
+
+
+def _write_json():
+    """Flush the current session data to usage_data/<session>.json."""
+    with USAGE_LOCK:
+        queries   = dict(QUERY_MAP)
+
+    now          = datetime.utcnow()
+    elapsed      = round((now - SESSION_START).total_seconds(), 2)
+    total_calls  = sum(q["api_calls"]     for q in queries.values())
+    total_cost   = sum(q["query_cost_usd"] for q in queries.values())
+
+    payload = {
+        "session_start":         SESSION_START_ISO,
+        "session_end":           now.isoformat(),
+        "total_duration_seconds": elapsed,
+        "total_api_calls":       total_calls,
+        "estimated_cost_usd":    round(total_cost, 8),
+        "model":                 "gemini-2.5-flash",
+        "pricing": {
+            "input_per_1m_tokens":  PRICE_INPUT_PER_M,
+            "output_per_1m_tokens": PRICE_OUTPUT_PER_M,
+        },
+        "queries": queries,
+    }
+
+    try:
+        with open(SESSION_FILE, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        logger.info(
+            f"Usage report → {SESSION_FILE} "
+            f"({len(queries)} queries, ${total_cost:.6f} total, {elapsed}s elapsed)"
+        )
+    except Exception as e:
+        logger.warning(f"Could not write usage JSON: {e}")
+
+
+def _record_usage(query: str, usage: dict):
+    """Record one query's usage in the in-memory map and flush to JSON."""
+    input_tok  = usage.get("input_tokens",  0)
+    output_tok = usage.get("output_tokens", 0)
+    api_calls  = usage.get("api_calls",     0)
+    in_cost, out_cost = _compute_cost(input_tok, output_tok)
+
+    entry = {
+        "timestamp":       datetime.utcnow().isoformat(),
+        "api_calls":       api_calls,
+        "input_tokens":    input_tok,
+        "output_tokens":   output_tok,
+        "input_cost_usd":  round(in_cost,             8),
+        "output_cost_usd": round(out_cost,            8),
+        "query_cost_usd":  round(in_cost + out_cost,  8),
+    }
+
+    with USAGE_LOCK:
+        # If the same query is run multiple times, accumulate rather than overwrite
+        if query in QUERY_MAP:
+            prev = QUERY_MAP[query]
+            entry["api_calls"]       += prev["api_calls"]
+            entry["input_tokens"]    += prev["input_tokens"]
+            entry["output_tokens"]   += prev["output_tokens"]
+            entry["input_cost_usd"]   = round(entry["input_cost_usd"]  + prev["input_cost_usd"],  8)
+            entry["output_cost_usd"]  = round(entry["output_cost_usd"] + prev["output_cost_usd"], 8)
+            entry["query_cost_usd"]   = round(entry["query_cost_usd"]  + prev["query_cost_usd"],  8)
+        QUERY_MAP[query] = entry
+
+    _write_json()
+
+
+atexit.register(_write_json)  # final flush when Python process exits
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -81,6 +181,9 @@ def _run_agent(job_id: str, query: str):
     try:
         agent  = NBAStatsAgent()
         output = agent.run(query, progress_cb=cb)
+
+        # Record token usage / cost for this query
+        _record_usage(query, output.get("usage") or {})
 
         job = JOBS[job_id]
         with job["lock"]:
@@ -191,9 +294,74 @@ def status(job_id: str):
     })
 
 
+@app.route("/api/h2h-matrix", methods=["POST"])
+def h2h_matrix():
+    """
+    Compute H2H records for every pair from a compare result.
+    Body: {"players": [{player_id, name, season_from, season_to, season_type}, ...]}
+    """
+    import nba_stats_client as nba
+    body    = request.get_json(force=True, silent=True) or {}
+    players = body.get("players", [])
+    if len(players) < 2:
+        return jsonify({"error": "Need at least 2 players"}), 400
+    try:
+        result = nba.get_h2h_matrix(players)
+        return jsonify(result)
+    except Exception as e:
+        logger.exception(f"h2h-matrix error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok", "jobs": len(JOBS)})
+
+
+@app.route("/api/usage_report")
+def usage_report():
+    """Return the current session's usage JSON as a file download."""
+    _write_json()          # ensure latest data is flushed
+    if not os.path.exists(SESSION_FILE):
+        return jsonify({"error": "No usage data yet."}), 404
+    with open(SESSION_FILE, "r", encoding="utf-8") as f:
+        content = f.read()
+    filename = os.path.basename(SESSION_FILE)
+    return Response(
+        content,
+        mimetype="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.route("/api/usage_summary")
+def usage_summary():
+    """Return a live JSON summary of session usage and cost."""
+    with USAGE_LOCK:
+        queries = dict(QUERY_MAP)
+
+    now         = datetime.utcnow()
+    elapsed     = round((now - SESSION_START).total_seconds(), 2)
+    total_calls = sum(q["api_calls"]      for q in queries.values())
+    total_in    = sum(q["input_tokens"]   for q in queries.values())
+    total_out   = sum(q["output_tokens"]  for q in queries.values())
+    total_cost  = sum(q["query_cost_usd"] for q in queries.values())
+
+    return jsonify({
+        "session_start":          SESSION_START_ISO,
+        "total_duration_seconds": elapsed,
+        "total_api_calls":        total_calls,
+        "total_input_tokens":     total_in,
+        "total_output_tokens":    total_out,
+        "estimated_cost_usd":     round(total_cost, 6),
+        "model":                  "gemini-2.5-flash",
+        "session_file":           SESSION_FILE,
+        "pricing": {
+            "input_per_1m_tokens":  PRICE_INPUT_PER_M,
+            "output_per_1m_tokens": PRICE_OUTPUT_PER_M,
+        },
+        "queries": queries,
+    })
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

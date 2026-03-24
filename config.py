@@ -23,9 +23,9 @@ NBA_API_HEADERS = {
 }
 
 # ── Season strings ────────────────────────────────────────────────────────────
-DEFAULT_SEASON  = "2024-25"
+DEFAULT_SEASON  = "2025-26"
 MIN_YEAR        = 1996
-MAX_YEAR        = 2025
+MAX_YEAR        = 2026
 
 # Build a lookup so "2018" → "2017-18", "2017-18" → "2017-18", etc.
 YEAR_TO_SEASON = {}
@@ -35,10 +35,16 @@ for _y in range(MIN_YEAR, MAX_YEAR + 1):
     YEAR_TO_SEASON[_s]            = _s   # already canonical
     YEAR_TO_SEASON[str(_y + 1)]  = _s   # end year    e.g. "2018"
 
-# ── Claude agent ──────────────────────────────────────────────────────────────
-CLAUDE_MODEL     = "claude-sonnet-4-20250514"
+# ── Gemini agent ──────────────────────────────────────────────────────────────
+# Gemini 2.5 Flash — free tier via Google AI Studio (no billing required).
+# Get a key at: https://aistudio.google.com/apikey
+# Set env var:  GOOGLE_API_KEY=<your key>
+#
+# gemini-2.5-flash: 20 req/day free tier. Add billing to unlock higher limits.
+# Swap to gemini-2.0-flash for 1500 req/day free (deprecated EOL June 2026).
+GEMINI_MODEL     = "gemini-2.5-flash"
 MAX_AGENT_ITERS  = 12
-AGENT_MAX_TOKENS = 4096
+AGENT_MAX_TOKENS = 16384
 
 # ── Flask ─────────────────────────────────────────────────────────────────────
 FLASK_HOST = "0.0.0.0"
@@ -46,4 +52,4 @@ FLASK_PORT = 5000
 
 # ── Data limits ───────────────────────────────────────────────────────────────
 MAX_GAME_LOG_ROWS = 250    # rows returned to frontend in game log
-MAX_SEASONS_SPAN  = 12     # max seasons fetched in multi-season range queries
+MAX_SEASONS_SPAN  = 30     # max seasons fetched; 30 covers full supported range (1996–2026)

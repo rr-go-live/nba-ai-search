@@ -113,10 +113,11 @@ TOOL_DEFINITIONS = [
                     "items": {"type": "integer"},
                     "description": "List of condition player IDs (1 for single, 2+ for multi-inactive)"
                 },
-                "all_active":           {"type": "boolean", "description": "true=H2H/all active, false=inactive split"},
+                "all_active":           {"type": "boolean", "description": "true=both players active (H2H or teammate 'with' stats), false=inactive split"},
+                "require_opponent":     {"type": "boolean", "description": "true=H2H only (condition player must be on OPPOSING team, excludes shared-team games). false=teammate 'with' stats (condition player just needs to have played). Always set true for H2H queries, never set true for 'stats with teammate' queries."},
                 "season_from":          {"type": "string",  "description": "Start season"},
                 "season_to":            {"type": "string",  "description": "End season"},
-                "opponent_abbr":        {"type": "string",  "description": "Optional opponent team filter (use for H2H)"},
+                "opponent_abbr":        {"type": "string",  "description": "Optional opponent team filter — do NOT use for H2H (all_active=true); only use for inactive splits (all_active=false)."},
                 "season_type":          {"type": "string",  "description": "'Regular Season' or 'Playoffs'"},
             },
             "required": ["player_id", "condition_player_ids", "all_active"],
@@ -125,17 +126,85 @@ TOOL_DEFINITIONS = [
     {
         "name": "get_career_stats",
         "description": (
-            "Full career stats: season-by-season regular season + playoff averages.\n"
-            "Each season row includes fg3a (three-point attempts per game) for volume context.\n"
-            "Use for: 'Tatum career stats', 'Curry season-by-season', 'LeBron playoff career'."
+            "Season-by-season regular season + playoff averages for a player.\n"
+            "Each season row includes fga/fg3a/fta (attempts per game) for donut hover.\n"
+            "Pass season_from + season_to to restrict to a specific range "
+            "(e.g. 'Tatum stats 2022-2025' → season_from='2022-23', season_to='2024-25').\n"
+            "Omit both for full career. "
+            "Use for: 'Tatum career stats', 'Curry season-by-season', "
+            "'Tatum 2022 to 2025', 'LeBron last 3 seasons'."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "player_id":   {"type": "integer", "description": "NBA player ID"},
+                "season_from": {"type": "string",  "description": "First season of range e.g. '2022-23'. Omit for full career."},
+                "season_to":   {"type": "string",  "description": "Last season of range e.g. '2024-25'. Omit for full career."},
                 "season_type": {"type": "string",  "description": "'Regular Season' (default) or 'Playoffs'"},
             },
             "required": ["player_id"],
+        },
+    },
+    {
+        "name": "get_multi_player_stats",
+        "description": (
+            "Compare 2–6 players side by side, each with their own season range and type.\n\n"
+            "Use for:\n"
+            "  • 'Kobe 2010 playoffs vs Tatum 2024 playoffs'\n"
+            "  • 'Compare LeBron, Curry, Durant, Giannis career stats'\n"
+            "  • 'Jordan vs LeBron prime years comparison'\n"
+            "  • Any query asking to compare multiple players\n\n"
+            "Each player config specifies their own season_from/season_to/season_type so "
+            "historical eras can be compared directly (e.g. Kobe 2009-10 Playoffs vs Tatum 2023-24 Playoffs).\n"
+            "Works for ALL players including retired legends (Jordan, Kobe, Shaq, Bird, Magic, etc.)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "players": {
+                    "type": "array",
+                    "description": "List of player configs, one per player (2-6 players). Each entry MUST include player_id (integer), season_from (string e.g. '2003-04'), season_to (string), season_type (string), label (string).",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "player_id":    {"type": "integer", "description": "NBA player ID — must be a plain integer"},
+                            "season_from":  {"type": "string",  "description": "Start season e.g. '2003-04'"},
+                            "season_to":    {"type": "string",  "description": "End season e.g. '2025-26'"},
+                            "season_type":  {"type": "string",  "description": "'Regular Season' or 'Playoffs'"},
+                            "label":        {"type": "string",  "description": "Display label e.g. 'LeBron Career'"},
+                            "series_round": {"type": "string",  "description": "Filter to a specific playoff round: 'finals', 'cf', 'r1', 'r2'. Only valid when season_type='Playoffs' and a single season is requested."},
+                        },
+                        # No nested required — Gemini rejects calls with required inside items.
+                        # The description above and system prompt enforce the fields instead.
+                    },
+                },
+            },
+            "required": ["players"],
+        },
+    },
+    {
+        "name": "get_leaderboard",
+        "description": (
+            "League-wide stat leaderboard — top N players ranked by a stat category.\n\n"
+            "Use for:\n"
+            "  • 'Who are the top scorers this season?'\n"
+            "  • 'Leaderboard of players with most active points'\n"
+            "  • 'Most rebounds per game leaders'\n"
+            "  • 'Best FG% shooters this year'\n"
+            "  • '2009-10 season scoring leaders' (historical seasons work too)\n\n"
+            "Stat values: pts, reb, ast, stl, blk, fg3m, eff, min\n"
+            "Use per_mode='PerGame' for averages, 'Totals' for cumulative season totals."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "stat":        {"type": "string",  "description": "Stat to rank by: pts, reb, ast, stl, blk, fg3m, eff, min"},
+                "season":      {"type": "string",  "description": "Season e.g. '2025-26'"},
+                "season_type": {"type": "string",  "description": "'Regular Season' or 'Playoffs'"},
+                "per_mode":    {"type": "string",  "description": "'PerGame' (default) or 'Totals'"},
+                "top_n":       {"type": "integer", "description": "How many players to return (default 10, max 25)"},
+            },
+            "required": ["stat"],
         },
     },
 ]
@@ -189,18 +258,49 @@ def execute_tool(tool_name: str, tool_input: dict) -> dict:
         )
 
     elif tool_name == "get_conditional_stats":
+        # Default season_from to 2012-13 (wide range) so H2H queries never
+        # silently truncate to the current season when Claude omits the range.
+        # Claude can always pass a narrower range explicitly if the user asked for it.
         return nba.get_player_conditional_stats(
             player_id            = tool_input["player_id"],
             condition_player_ids = tool_input["condition_player_ids"],
             all_active           = tool_input["all_active"],
-            season_from          = tool_input.get("season_from", nba.DEFAULT_SEASON),
+            require_opponent     = tool_input.get("require_opponent", False),
+            season_from          = tool_input.get("season_from", "2012-13"),
             season_to            = tool_input.get("season_to",   nba.DEFAULT_SEASON),
             opponent_abbr        = tool_input.get("opponent_abbr", ""),
             season_type          = tool_input.get("season_type", "Regular Season"),
         )
 
     elif tool_name == "get_career_stats":
-        return nba.get_player_career_stats(tool_input["player_id"])
+        return nba.get_player_career_stats(
+            tool_input["player_id"],
+            season_from = tool_input.get("season_from"),
+            season_to   = tool_input.get("season_to"),
+        )
+
+    elif tool_name == "get_multi_player_stats":
+        # Fill in defaults and coerce types — Gemini sometimes sends player_id
+        # as a float (e.g. 2544.0) or omits season_to; normalise here so the
+        # backend never receives bad types.
+        players = tool_input.get("players", [])
+        for cfg in players:
+            if "player_id" in cfg:
+                cfg["player_id"] = int(cfg["player_id"])
+            if not cfg.get("season_to"):
+                cfg["season_to"] = cfg.get("season_from", nba.DEFAULT_SEASON)
+            if not cfg.get("season_type"):
+                cfg["season_type"] = "Regular Season"
+        return nba.get_multi_player_stats(players)
+
+    elif tool_name == "get_leaderboard":
+        return nba.get_leaderboard(
+            stat        = tool_input.get("stat",        "pts"),
+            season      = tool_input.get("season",      nba.DEFAULT_SEASON),
+            season_type = tool_input.get("season_type", "Regular Season"),
+            per_mode    = tool_input.get("per_mode",    "PerGame"),
+            top_n       = tool_input.get("top_n",       10),
+        )
 
     else:
         return {"error": f"Unknown tool: {tool_name}"}

@@ -1,0 +1,278 @@
+<svg width="900" height="590" viewBox="0 0 900 590"
+     xmlns="http://www.w3.org/2000/svg"
+     font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 Z" fill="#888"/>
+    </marker>
+    <marker id="arr-blue" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 Z" fill="#4285f4"/>
+    </marker>
+    <marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 Z" fill="#e53935"/>
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 Z" fill="#43a047"/>
+    </marker>
+  </defs>
+
+  <!-- ── Background ── -->
+  <rect width="900" height="590" fill="#ffffff"/>
+
+  <!-- ── Title ── -->
+  <text x="450" y="38" text-anchor="middle"
+        font-size="16" font-weight="700" fill="#1a1a2e" letter-spacing="-0.3">
+    NBA AI Search — Agent Data Flow
+  </text>
+
+  <!-- ══════════════════════════════════════════════════════
+       DECORATIVE DOTS  (scattered around the agent circle)
+       ══════════════════════════════════════════════════════ -->
+
+  <!-- Red — top-left -->
+  <circle cx="346" cy="150" r="5"   fill="#e53935" opacity="0.72"/>
+  <circle cx="364" cy="173" r="3.5" fill="#e53935" opacity="0.55"/>
+  <circle cx="330" cy="170" r="4"   fill="#e53935" opacity="0.62"/>
+  <circle cx="350" cy="195" r="3"   fill="#e53935" opacity="0.45"/>
+  <circle cx="322" cy="155" r="3"   fill="#e53935" opacity="0.50"/>
+  <circle cx="358" cy="213" r="2.5" fill="#e53935" opacity="0.38"/>
+  <circle cx="338" cy="220" r="3"   fill="#e53935" opacity="0.35"/>
+
+  <!-- Blue — top-center -->
+  <circle cx="416" cy="138" r="5"   fill="#4285f4" opacity="0.72"/>
+  <circle cx="441" cy="130" r="4"   fill="#4285f4" opacity="0.60"/>
+  <circle cx="465" cy="141" r="3.5" fill="#4285f4" opacity="0.55"/>
+  <circle cx="407" cy="156" r="3"   fill="#4285f4" opacity="0.50"/>
+  <circle cx="483" cy="132" r="3.5" fill="#4285f4" opacity="0.55"/>
+  <circle cx="450" cy="150" r="2.5" fill="#4285f4" opacity="0.40"/>
+  <circle cx="428" cy="149" r="3"   fill="#4285f4" opacity="0.45"/>
+
+  <!-- Green — top-right -->
+  <circle cx="499" cy="145" r="5"   fill="#43a047" opacity="0.72"/>
+  <circle cx="523" cy="158" r="3.5" fill="#43a047" opacity="0.55"/>
+  <circle cx="514" cy="138" r="4"   fill="#43a047" opacity="0.62"/>
+  <circle cx="541" cy="170" r="3"   fill="#43a047" opacity="0.50"/>
+  <circle cx="556" cy="153" r="3.5" fill="#43a047" opacity="0.55"/>
+  <circle cx="533" cy="140" r="2.5" fill="#43a047" opacity="0.40"/>
+
+  <!-- Amber — right side -->
+  <circle cx="563" cy="193" r="5"   fill="#fb8c00" opacity="0.70"/>
+  <circle cx="576" cy="216" r="3.5" fill="#fb8c00" opacity="0.55"/>
+  <circle cx="571" cy="239" r="4"   fill="#fb8c00" opacity="0.62"/>
+  <circle cx="561" cy="262" r="3"   fill="#fb8c00" opacity="0.50"/>
+  <circle cx="569" cy="284" r="3"   fill="#fb8c00" opacity="0.45"/>
+  <circle cx="563" cy="306" r="2.5" fill="#fb8c00" opacity="0.38"/>
+
+  <!-- Left side -->
+  <circle cx="330" cy="242" r="4"   fill="#fb8c00" opacity="0.60"/>
+  <circle cx="316" cy="264" r="3.5" fill="#fb8c00" opacity="0.50"/>
+  <circle cx="325" cy="287" r="3"   fill="#fb8c00" opacity="0.45"/>
+  <circle cx="334" cy="310" r="2.5" fill="#fb8c00" opacity="0.38"/>
+
+  <!-- Bottom-left -->
+  <circle cx="344" cy="332" r="4"   fill="#43a047" opacity="0.50"/>
+  <circle cx="326" cy="317" r="3"   fill="#e53935" opacity="0.45"/>
+  <circle cx="359" cy="347" r="3"   fill="#4285f4" opacity="0.40"/>
+
+  <!-- Right-lower -->
+  <circle cx="551" cy="330" r="4"   fill="#e53935" opacity="0.50"/>
+  <circle cx="536" cy="350" r="3"   fill="#4285f4" opacity="0.45"/>
+
+  <!-- Bottom arc -->
+  <circle cx="396" cy="362" r="3.5" fill="#e53935" opacity="0.45"/>
+  <circle cx="417" cy="370" r="3"   fill="#4285f4" opacity="0.40"/>
+  <circle cx="441" cy="365" r="4"   fill="#43a047" opacity="0.50"/>
+  <circle cx="463" cy="371" r="3"   fill="#fb8c00" opacity="0.45"/>
+  <circle cx="486" cy="364" r="3.5" fill="#e53935" opacity="0.40"/>
+  <circle cx="505" cy="359" r="3"   fill="#4285f4" opacity="0.45"/>
+
+  <!-- ══════════════════════════════════════════════════════
+       USER QUERY BOX  (left)
+       ══════════════════════════════════════════════════════ -->
+  <rect x="18" y="212" width="155" height="106" rx="10"
+        fill="#f3f4ff" stroke="#9fa8da" stroke-width="1.5"/>
+
+  <!-- mini document icon -->
+  <rect x="32" y="225" width="20" height="25" rx="2"
+        fill="none" stroke="#7986cb" stroke-width="1.5"/>
+  <line x1="37" y1="233" x2="47" y2="233" stroke="#7986cb" stroke-width="1.2"/>
+  <line x1="37" y1="238" x2="47" y2="238" stroke="#7986cb" stroke-width="1.2"/>
+  <line x1="37" y1="243" x2="44" y2="243" stroke="#7986cb" stroke-width="1.2"/>
+
+  <text x="95" y="232" text-anchor="middle"
+        font-size="12.5" font-weight="700" fill="#283593">User Query</text>
+  <text x="95" y="252" text-anchor="middle" font-size="9" fill="#666">"Tatum career stats"</text>
+  <text x="95" y="267" text-anchor="middle" font-size="9" fill="#666">"LeBron vs Warriors"</text>
+  <text x="95" y="282" text-anchor="middle" font-size="9" fill="#666">"Jokic career highs"</text>
+  <text x="95" y="301" text-anchor="middle" font-size="8.5" fill="#9fa8da">natural language text</text>
+
+  <!-- ── Arrow: User → Agent ── -->
+  <line x1="175" y1="265" x2="355" y2="265"
+        stroke="#888" stroke-width="1.8" marker-end="url(#arr)"/>
+  <rect x="186" y="252" width="122" height="16" rx="8"
+        fill="white" stroke="#e0e0e0" stroke-width="1"/>
+  <text x="247" y="263.5" text-anchor="middle" font-size="9" fill="#555">POST /api/query</text>
+
+  <!-- ══════════════════════════════════════════════════════
+       AGENT CIRCLE  (center)
+       ══════════════════════════════════════════════════════ -->
+  <!-- Dashed orbit ring -->
+  <circle cx="450" cy="262" r="108"
+          fill="none" stroke="#eeeeee" stroke-width="1.5" stroke-dasharray="5,5"/>
+  <!-- Main circle -->
+  <circle cx="450" cy="262" r="90"
+          fill="white" stroke="#e8e8e8" stroke-width="2"/>
+
+  <!-- Gear icon -->
+  <text x="450" y="228" text-anchor="middle" font-size="16" fill="#cccccc">⚙</text>
+
+  <text x="450" y="251" text-anchor="middle"
+        font-size="22" font-weight="800" fill="#1a1a2e">Agent</text>
+  <text x="450" y="269" text-anchor="middle"
+        font-size="10.5" fill="#aaaaaa">Think · Act · Observe</text>
+  <line x1="393" y1="280" x2="507" y2="280" stroke="#f0f0f0" stroke-width="1"/>
+  <text x="450" y="296" text-anchor="middle"
+        font-size="10" fill="#4285f4" font-weight="600">Gemini 2.5 Flash</text>
+  <text x="450" y="312" text-anchor="middle"
+        font-size="9" fill="#cccccc">max 12 iterations</text>
+
+  <!-- ── Arrow: Agent → Output  (SSE stream) ── -->
+  <line x1="542" y1="256" x2="718" y2="256"
+        stroke="#43a047" stroke-width="1.8" marker-end="url(#arr-green)"/>
+  <rect x="557" y="243" width="90" height="17" rx="8"
+        fill="#f1f8f0" stroke="#a5d6a7" stroke-width="1"/>
+  <text x="602" y="255" text-anchor="middle"
+        font-size="9" fill="#2e7d32" font-weight="600">SSE Stream</text>
+  <text x="602" y="276" text-anchor="middle"
+        font-size="8.5" fill="#bbb">thinking · result · done</text>
+
+  <!-- ══════════════════════════════════════════════════════
+       RENDERED UI BOX  (right)
+       ══════════════════════════════════════════════════════ -->
+  <rect x="720" y="202" width="162" height="120" rx="10"
+        fill="#f0faf2" stroke="#a5d6a7" stroke-width="1.5"/>
+  <text x="801" y="224" text-anchor="middle"
+        font-size="12.5" font-weight="700" fill="#1b5e20">Rendered UI</text>
+
+  <!-- 2 × 2 mini cards -->
+  <rect x="732" y="232" width="68" height="24" rx="4"
+        fill="white" stroke="#c8e6c9" stroke-width="1"/>
+  <text x="766" y="248" text-anchor="middle" font-size="8" fill="#444">Career Stats</text>
+
+  <rect x="808" y="232" width="68" height="24" rx="4"
+        fill="white" stroke="#c8e6c9" stroke-width="1"/>
+  <text x="842" y="248" text-anchor="middle" font-size="8" fill="#444">Career Highs</text>
+
+  <rect x="732" y="263" width="68" height="24" rx="4"
+        fill="white" stroke="#c8e6c9" stroke-width="1"/>
+  <text x="766" y="279" text-anchor="middle" font-size="8" fill="#444">Accolades</text>
+
+  <rect x="808" y="263" width="68" height="24" rx="4"
+        fill="white" stroke="#c8e6c9" stroke-width="1"/>
+  <text x="842" y="279" text-anchor="middle" font-size="8" fill="#444">H2H / Compare</text>
+
+  <text x="801" y="308" text-anchor="middle"
+        font-size="8.5" fill="#888">Charts · Donuts · Tables</text>
+
+  <!-- ══════════════════════════════════════════════════════
+       TOOL_CALL ARROW  (Agent → Tools, right bend)
+       ══════════════════════════════════════════════════════ -->
+  <polyline points="482,352 482,398 528,398 528,427"
+            stroke="#4285f4" stroke-width="1.8" fill="none"
+            marker-end="url(#arr-blue)"/>
+  <rect x="488" y="384" width="65" height="17" rx="8"
+        fill="#e8f0fe" stroke="#c5d8fd" stroke-width="1"/>
+  <text x="520" y="396" text-anchor="middle"
+        font-size="9" fill="#1a73e8" font-weight="600">tool_call</text>
+
+  <!-- ══════════════════════════════════════════════════════
+       TOOL_RESPONSES ARROW  (Tools → Agent, left bend)
+       ══════════════════════════════════════════════════════ -->
+  <polyline points="372,427 372,398 418,398 418,352"
+            stroke="#e53935" stroke-width="1.8" fill="none"
+            marker-end="url(#arr-red)"/>
+  <rect x="292" y="384" width="88" height="17" rx="8"
+        fill="#fce8e6" stroke="#ffcdd2" stroke-width="1"/>
+  <text x="336" y="396" text-anchor="middle"
+        font-size="9" fill="#c62828" font-weight="600">tool_responses</text>
+
+  <!-- ══════════════════════════════════════════════════════
+       NBA STATS TOOLS BOX  (bottom)
+       ══════════════════════════════════════════════════════ -->
+  <rect x="192" y="427" width="516" height="136" rx="12"
+        fill="#fff8e1" stroke="#ffe082" stroke-width="1.5"/>
+
+  <!-- Header tint — top strip only -->
+  <path d="M204,427 H696 a12,12 0 0,1 12,12 V457 H192 V439 a12,12 0 0,1 12,-12 Z"
+        fill="#fff3cd"/>
+
+  <!-- Title -->
+  <text x="450" y="447" text-anchor="middle"
+        font-size="12" font-weight="700" fill="#e65100">NBA Stats Tools</text>
+  <text x="450" y="461" text-anchor="middle"
+        font-size="8.5" fill="#f57c00">
+    nba_stats_client.py  ·  nba_http.py  ·  bbref_client.py
+  </text>
+
+  <!-- ── Row 1 chips ── -->
+  <!-- Career Stats -->
+  <rect x="208" y="471" width="150" height="30" rx="6"
+        fill="white" stroke="#ffe082" stroke-width="1"/>
+  <text x="283" y="483" text-anchor="middle"
+        font-size="8.5" fill="#444" font-weight="600">Career Stats</text>
+  <text x="283" y="495" text-anchor="middle"
+        font-size="7.5" fill="#999">playercareerstats</text>
+
+  <!-- Game Logs -->
+  <rect x="375" y="471" width="150" height="30" rx="6"
+        fill="white" stroke="#ffe082" stroke-width="1"/>
+  <text x="450" y="483" text-anchor="middle"
+        font-size="8.5" fill="#444" font-weight="600">Game Logs</text>
+  <text x="450" y="495" text-anchor="middle"
+        font-size="7.5" fill="#999">playergamelog  ·  leaguegamefinder</text>
+
+  <!-- Player Awards -->
+  <rect x="542" y="471" width="150" height="30" rx="6"
+        fill="white" stroke="#ffe082" stroke-width="1"/>
+  <text x="617" y="483" text-anchor="middle"
+        font-size="8.5" fill="#444" font-weight="600">Player Awards</text>
+  <text x="617" y="495" text-anchor="middle"
+        font-size="7.5" fill="#999">playerawards</text>
+
+  <!-- ── Row 2 chips ── -->
+  <!-- H2H / Splits -->
+  <rect x="208" y="509" width="150" height="30" rx="6"
+        fill="white" stroke="#ffe082" stroke-width="1"/>
+  <text x="283" y="521" text-anchor="middle"
+        font-size="8.5" fill="#444" font-weight="600">H2H / Splits</text>
+  <text x="283" y="533" text-anchor="middle"
+        font-size="7.5" fill="#999">conditional stats</text>
+
+  <!-- Leaderboards -->
+  <rect x="375" y="509" width="150" height="30" rx="6"
+        fill="white" stroke="#ffe082" stroke-width="1"/>
+  <text x="450" y="521" text-anchor="middle"
+        font-size="8.5" fill="#444" font-weight="600">Leaderboards</text>
+  <text x="450" y="533" text-anchor="middle"
+        font-size="7.5" fill="#999">leaguedashplayerstats</text>
+
+  <!-- BBRef Fallback -->
+  <rect x="542" y="509" width="150" height="30" rx="6"
+        fill="white" stroke="#ffe082" stroke-width="1"/>
+  <text x="617" y="521" text-anchor="middle"
+        font-size="8.5" fill="#444" font-weight="600">BBRef Fallback</text>
+  <text x="617" y="533" text-anchor="middle"
+        font-size="7.5" fill="#999">2025-26 season</text>
+
+  <!-- ── Footer ── -->
+  <text x="450" y="577" text-anchor="middle"
+        font-size="9" fill="#cccccc">
+    Data sources: stats.nba.com  ·  basketball-reference.com
+  </text>
+
+</svg>

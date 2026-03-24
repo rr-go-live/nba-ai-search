@@ -1,5 +1,18 @@
+# Environment / secrets
 .env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Data / analysis scratch
 *.csv
 usage_data/
 testing/
 analyze/
+scratch.py
+
+# Claude worktrees / session state
+worktrees/
+.claude/

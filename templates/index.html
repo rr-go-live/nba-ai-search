@@ -576,12 +576,13 @@ function renderResults(d) {
   c.innerHTML = '';
   document.getElementById('progress-panel').classList.remove('active');
   if (d.player && d.player.team_abbr) applyTeamColor(d.player.team_abbr);
-  if (d.type === 'vs_team')      renderVsTeam(d, c);
-  else if (d.type === 'conditional') renderConditional(d, c);
-  else if (d.type === 'h2h')         renderH2H(d, c);
-  else if (d.type === 'career')      renderCareer(d, c);
-  else if (d.type === 'compare')     { renderCompare(d, c); fetchH2HMatrix(); }
-  else if (d.type === 'leaderboard') renderLeaderboard(d, c);
+  if (d.type === 'vs_team')        renderVsTeam(d, c);
+  else if (d.type === 'conditional')  renderConditional(d, c);
+  else if (d.type === 'h2h')          renderH2H(d, c);
+  else if (d.type === 'career')       renderCareer(d, c);
+  else if (d.type === 'last_n_games') renderLastNGames(d, c);
+  else if (d.type === 'compare')      { renderCompare(d, c); fetchH2HMatrix(); }
+  else if (d.type === 'leaderboard')  renderLeaderboard(d, c);
   else c.innerHTML = '<pre style="color:var(--muted)">' + JSON.stringify(d, null, 2) + '</pre>';
   c.classList.add('visible');
 }
@@ -981,6 +982,151 @@ function renderH2H(d, c) {
 }
 
 // ─── career ──────────────────────────────────────────────────────────────────
+// ─── last_n_games ─────────────────────────────────────────────────────────────
+function renderLastNGames(d, c) {
+  var player  = d.player  || {};
+  var avg     = d.averages || {};
+  var log     = d.game_log || [];
+  var n       = d.n_returned || log.length;
+  var season  = d.season || '2025-26';
+  var lastDate = d.last_game_date || '';
+  var col     = teamColor(player.team_abbr);
+
+  var nMeta   = '<div class="meta-tag">Last <span>' + n + ' Games</span></div>';
+  var snMeta  = '<div class="meta-tag">Season <span>' + season + '</span></div>';
+  var dateStr = lastDate ? lastDate.replace(/(\d{4})-(\d{2})-(\d{2})/, function(_, y,m,dd) {
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return months[parseInt(m,10)-1] + ' ' + parseInt(dd,10) + ', ' + y;
+  }) : '';
+  var dateMeta = dateStr ? '<div class="meta-tag">Through <span>' + dateStr + '</span></div>' : '';
+
+  c.innerHTML = playerHeaderHtml(player, null, [nMeta, snMeta, dateMeta])
+    + insightHtml(d.insight)
+    + '<div id="ln-stat-cards" style="margin:18px 0 6px"></div>'
+    + '<div style="margin:20px 0 8px">'
+    +   '<div class="section-title">Last ' + n + ' Games — PTS / REB / AST</div>'
+    +   '<div style="position:relative;height:220px;margin-top:10px"><canvas id="ln-chart"></canvas></div>'
+    + '</div>'
+    + '<div id="ln-log" style="margin-top:20px"></div>';
+
+  buildStatCards('ln-stat-cards', avg);
+  buildLastNChart('ln-chart', log, player);
+  buildGameLog('ln-log', log, null);
+}
+
+// buildLastNChart
+// ---------------
+// Renders a grouped bar chart (PTS / REB / AST per game) for the last N games.
+// Games are displayed oldest-first on the x-axis so the line reads left-to-right
+// in time order. Each game label shows the opponent abbreviation and date.
+//
+// Args:
+//   canvasId (string): ID of the <canvas> element to draw into
+//   log      (Array):  Array of game-log rows (newest-first from backend)
+//   player   (Object): Player object with team_abbr for color
+//
+// Returns: void (draws directly onto canvas)
+function buildLastNChart(canvasId, log, player) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas || !log || !log.length) return;
+
+  // Reverse so oldest game is on the left
+  var reversed = log.slice().reverse();
+
+  var labels = reversed.map(function(r) {
+    // Build "OPP\nMMM DD" label — matchup is like "LAL vs. BOS" or "LAL @ BOS"
+    var matchup = (r.matchup || '').split(' ').pop();  // last word = opponent abbr
+    var date    = (r.date || r.game_date || '').replace(/(\d{4})-(\d{2})-(\d{2})/, function(_, y, m, dd) {
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return months[parseInt(m,10)-1] + ' ' + parseInt(dd,10);
+    });
+    return [matchup, date];
+  });
+
+  var pts = reversed.map(function(r) { return r.pts || 0; });
+  var reb = reversed.map(function(r) { return r.reb || 0; });
+  var ast = reversed.map(function(r) { return r.ast || 0; });
+
+  var col     = teamColor(player.team_abbr);
+  var colSec  = teamColor(player.team_abbr, true);
+  var colGrey = '#64748b';
+
+  if (window._lnChart instanceof Chart) {
+    window._lnChart.destroy();
+    window._lnChart = null;
+  }
+
+  window._lnChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'PTS',
+          data: pts,
+          backgroundColor: col + 'cc',
+          borderColor: col,
+          borderWidth: 1,
+          borderRadius: 3,
+        },
+        {
+          label: 'REB',
+          data: reb,
+          backgroundColor: colSec + 'cc',
+          borderColor: colSec,
+          borderWidth: 1,
+          borderRadius: 3,
+        },
+        {
+          label: 'AST',
+          data: ast,
+          backgroundColor: colGrey + 'cc',
+          borderColor: colGrey,
+          borderWidth: 1,
+          borderRadius: 3,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: {
+            color: '#94a3b8',
+            font: { size: 11 },
+            boxWidth: 12,
+            padding: 14,
+          },
+        },
+        tooltip: {
+          backgroundColor: 'rgba(10,16,28,.92)',
+          titleColor: '#e2e8f0',
+          bodyColor: '#94a3b8',
+          borderColor: 'rgba(255,255,255,.08)',
+          borderWidth: 1,
+        },
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: '#64748b',
+            font: { size: 10 },
+            maxRotation: 0,
+          },
+          grid: { color: 'rgba(255,255,255,.04)' },
+        },
+        y: {
+          ticks: { color: '#64748b', font: { size: 11 } },
+          grid: { color: 'rgba(255,255,255,.06)' },
+          beginAtZero: true,
+        },
+      },
+    },
+  });
+}
+
 function renderCareer(d, c) {
   var allSeasons = d.seasons || [];
   var allPsn     = d.playoff_seasons || [];

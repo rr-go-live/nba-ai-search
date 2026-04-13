@@ -146,6 +146,24 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "get_last_n_games",
+        "description": (
+            "Game-by-game stats for a player's most recent N games in the current season (2025-26).\n"
+            "Use for: 'LeBron last 10 games', 'Curry last 5 games stats', "
+            "'how has Giannis been playing recently', 'Tatum recent form'.\n"
+            "Always uses the current regular season (2025-26). "
+            "Returns per-game averages over those N games + a full game log."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_id": {"type": "integer", "description": "NBA player ID"},
+                "n":         {"type": "integer", "description": "Number of most recent games to return (e.g. 5, 10, 20)"},
+            },
+            "required": ["player_id", "n"],
+        },
+    },
+    {
         "name": "get_multi_player_stats",
         "description": (
             "Compare 2–6 players side by side, each with their own season range and type.\n\n"
@@ -277,6 +295,12 @@ def execute_tool(tool_name: str, tool_input: dict) -> dict:
             tool_input["player_id"],
             season_from = tool_input.get("season_from"),
             season_to   = tool_input.get("season_to"),
+        )
+
+    elif tool_name == "get_last_n_games":
+        return nba.get_player_last_n_games(
+            player_id = tool_input["player_id"],
+            n         = int(tool_input.get("n", 10)),
         )
 
     elif tool_name == "get_multi_player_stats":

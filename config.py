@@ -48,7 +48,7 @@ AGENT_MAX_TOKENS = 16384
 
 # ── Flask ─────────────────────────────────────────────────────────────────────
 FLASK_HOST = "0.0.0.0"
-FLASK_PORT = 5000
+FLASK_PORT = int(__import__('os').environ.get('PORT', 5000))
 
 # ── Data limits ───────────────────────────────────────────────────────────────
 MAX_GAME_LOG_ROWS = 250    # rows returned to frontend in game log

@@ -9,17 +9,18 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 :root {
-  --bg: #080c12;
-  --surface: #0e1520;
-  --surface2: #141d2b;
-  --border: rgba(255,255,255,0.07);
-  --accent: #f7941d;
-  --win: #22c55e;
-  --loss: #ef4444;
-  --text: #e8edf5;
-  --muted: #6b7a94;
-  --tp: #f7941d;
-  --ts: #ffffff;
+  --bg:       #0e1117;
+  --surface:  #161d2a;
+  --surface2: #1e2737;
+  --border:   #2d3748;
+  --accent:   #d4f542;
+  --win:      #4ade80;
+  --loss:     #f87171;
+  --text:     #f1f5f9;
+  --muted:    #64748b;
+  --tp:       #d4f542;
+  --ts:       #ffffff;
+  --radius:   0.75rem;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
@@ -33,28 +34,31 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .logo .mind { color: var(--accent); }
 .logo-dot { display: inline-block; width: 8px; height: 8px; background: var(--accent); border-radius: 50%; margin-left: 4px; animation: pulse-dot 2s ease-in-out infinite; }
 @keyframes pulse-dot { 0%,100% { transform: scale(1); } 50% { transform: scale(1.4); } }
+@keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+@keyframes donut-fill { from { stroke-dashoffset: var(--circumference); } to { stroke-dashoffset: var(--target-offset); } }
+@keyframes glow-pulse { 0%,100% { box-shadow: 0 0 20px rgba(212,245,66,.2); } 50% { box-shadow: 0 0 40px rgba(212,245,66,.4); } }
 .header-tag { font-size: .65rem; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; border: 1px solid var(--border); padding: 4px 10px; border-radius: 20px; }
 
 /* Search */
 .search-section { padding: 40px 0 32px; }
 .search-label { font-family: 'Barlow Condensed', sans-serif; font-size: 2.8rem; font-weight: 800; line-height: 1.1; margin-bottom: 20px; }
 .search-label em { font-style: normal; color: var(--accent); }
-.search-box { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: border-color .2s, box-shadow .2s; }
-.search-box:focus-within { border-color: rgba(247,148,29,.4); box-shadow: 0 0 0 3px rgba(247,148,29,.08); }
-#query-input { flex: 1; background: transparent; border: none; outline: none; padding: 18px 22px; color: var(--text); font-family: 'DM Mono', monospace; font-size: .9rem; caret-color: var(--accent); }
+.search-box { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .2s, box-shadow .2s; }
+.search-box:focus-within { border-color: rgba(212,245,66,.4); box-shadow: 0 0 0 3px rgba(212,245,66,.08); }
+#query-input { flex: 1; background: transparent; border: none; outline: none; padding: 18px 22px; color: var(--text); font-family: 'DM Mono', monospace; font-size: .9rem; caret-color: var(--tp); }
 #query-input::placeholder { color: var(--muted); }
 #submit-btn { background: var(--accent); border: none; cursor: pointer; padding: 0 28px; font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #000; transition: background .15s; display: flex; align-items: center; gap: 8px; }
-#submit-btn:hover { background: #ffaa40; }
+#submit-btn:hover { background: #e8ff5a; }
 #submit-btn.loading { background: #444; cursor: not-allowed; }
 .suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .sug { font-size: .72rem; color: var(--muted); cursor: pointer; border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; transition: all .15s; white-space: nowrap; }
-.sug:hover { color: var(--tp); border-color: rgba(247,148,29,.4); }
+.sug:hover { color: var(--tp); border-color: rgba(212,245,66,.4); }
 
 /* Progress */
-#progress-panel { display: none; margin-bottom: 28px; padding: 20px 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+#progress-panel { display: none; margin-bottom: 28px; }
 #progress-panel.active { display: block; }
 .progress-title { font-family: 'Barlow Condensed', sans-serif; font-size: .7rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
-#progress-steps { display: flex; flex-direction: column; gap: 6px; }
+#progress-steps { display: flex; flex-direction: column; gap: 6px; padding: 0 0 16px; }
 .step { font-size: .78rem; color: var(--muted); display: flex; gap: 10px; animation: step-in .3s ease both; }
 .step.hi { color: var(--text); }
 @keyframes step-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
@@ -78,12 +82,12 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .meta-team-current { color: var(--muted); font-size: .68rem; letter-spacing: .1em; }
 
 /* Insight */
-.insight-block { background: var(--surface); border-left: 3px solid var(--tp); padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 28px; font-family: 'Fraunces', serif; font-size: 1rem; line-height: 1.65; }
+.insight-block { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--tp); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 28px; font-family: 'Fraunces', serif; font-size: 1.05rem; font-style: italic; line-height: 1.7; }
 
 /* Stat cards */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 12px; margin-bottom: 28px; }
-.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 14px; text-align: center; transition: transform .15s; animation: card-in .4s ease both; }
-.stat-card:hover { transform: translateY(-2px); }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 14px; text-align: center; transition: transform .2s, box-shadow .2s; animation: card-in .5s ease both; }
+.stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.3); }
 @keyframes card-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .sc-label { font-size: .58rem; letter-spacing: .15em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
 .sc-value { font-family: 'Barlow Condensed', sans-serif; font-size: 2.4rem; font-weight: 900; line-height: 1; }
@@ -91,9 +95,9 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 
 /* H2H */
 .h2h-wrap { display: grid; grid-template-columns: 1fr 44px 1fr; gap: 0; margin-bottom: 28px; align-items: start; }
-.h2h-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 18px; }
+.h2h-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 18px; }
 .h2h-divider-col { display: flex; align-items: center; justify-content: center; padding-top: 60px; }
-.h2h-vs-circle { font-family: 'Barlow Condensed', sans-serif; font-size: 1.2rem; font-weight: 900; color: var(--muted); border: 1px solid var(--border); border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+.h2h-vs-circle { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 900; background: var(--tp); color: #000; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; letter-spacing: .04em; }
 .h2h-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
 .h2h-hs { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; }
 .h2h-pname { font-family: 'Barlow Condensed', sans-serif; font-size: 1.45rem; font-weight: 800; line-height: 1.1; }
@@ -106,9 +110,9 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 
 /* Split (conditional) */
 .split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px; }
-.split-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
-.split-card.primary { border-top: 3px solid var(--tp); }
-.split-card.secondary { border-top: 3px solid rgba(255,255,255,.12); }
+.split-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; padding: 0; }
+.split-card-bar { height: 3px; }
+.split-card-body { padding: 20px; }
 .split-title { font-family: 'Barlow Condensed', sans-serif; font-size: .7rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--tp); margin-bottom: 14px; }
 .split-title.dim { color: var(--muted); }
 .split-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
@@ -124,7 +128,7 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 
 /* Donuts */
 .donuts-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px; }
-.donut-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 14px; display: flex; flex-direction: column; align-items: center; }
+.donut-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 14px; display: flex; flex-direction: column; align-items: center; }
 .donut-lbl { font-size: .6rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; text-align: center; }
 .donut-canvas-wrap { position: relative; height: 130px; width: 130px; }
 .donut-val { font-family: 'Barlow Condensed', sans-serif; font-size: 1.7rem; font-weight: 900; color: var(--tp); margin-top: 6px; }
@@ -132,7 +136,7 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 
 /* Charts */
 .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
-.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
 .chart-card.full { grid-column: 1 / -1; }
 .chart-title { font-size: .62rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
 .chart-wrap { position: relative; height: 220px; }
@@ -181,15 +185,15 @@ thead th { padding: 8px 10px; text-align: left; font-size: .58rem; letter-spacin
 thead th:hover { color: var(--text); }
 .s-asc::after { content: ' \2191'; color: var(--tp); }
 .s-desc::after { content: ' \2193'; color: var(--tp); }
-tbody tr { border-bottom: 1px solid rgba(255,255,255,.03); transition: background .15s ease, transform .15s ease; }
-tbody tr:hover { background: rgba(255,255,255,.04); transform: scale(1.012); }
+tbody tr { border-bottom: 1px solid rgba(255,255,255,.04); transition: background .15s; }
+tbody tr:hover { background: rgba(255,255,255,.06); }
 tbody td { padding: 8px 10px; white-space: nowrap; transition: font-size .15s ease, color .15s ease; }
 .log-section tbody tr:hover td { font-size: .84rem; }
 .log-section tbody tr:hover .pts-cell { font-size: 1.15rem; }
 .log-detail { display: block; margin-top: 3px; font-size: .6rem; color: var(--muted); transition: color .15s ease; }
 .log-section tbody tr:hover .log-detail { color: #9dadc8; }
-.rw { color: var(--win); font-weight: 500; }
-.rl { color: var(--loss); }
+.rw { color: #4ade80; font-weight: 700; }
+.rl { color: #f87171; font-weight: 700; }
 .pts-cell { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 700; color: var(--tp); }
 .pp { color: var(--win); }
 .pm { color: var(--loss); }
@@ -200,8 +204,9 @@ tbody td { padding: 8px 10px; white-space: nowrap; transition: font-size .15s ea
 .log-pagination button:hover:not(:disabled) { border-color:var(--tp); color:var(--tp); }
 .log-pagination button:disabled { opacity:.3; cursor:default; }
 .log-pagination span { font-size:.65rem; color:var(--muted); }
-.highlight-row { background: rgba(247,148,29,.05); }
-.error-box { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); border-radius: 10px; padding: 16px 20px; color: #fca5a5; margin-bottom: 20px; }
+.highlight-row { background: rgba(212,245,66,.05); }
+.badge-pill { display: inline-block; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; font-size: .68rem; font-weight: 500; color: var(--text); letter-spacing: .04em; }
+.error-box { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); border-radius: var(--radius); padding: 16px 20px; color: #fca5a5; margin-bottom: 20px; }
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(0,0,0,.3); border-top-color: #000; border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 700px) {
@@ -215,12 +220,32 @@ tbody td { padding: 8px 10px; white-space: nowrap; transition: font-size .15s ea
 </style>
 </head>
 <body>
+<div id="trending-ticker" style="width:100%;overflow:hidden;border-bottom:1px solid var(--border);background:rgba(255,255,255,.03);padding:8px 0">
+  <div id="ticker-inner" style="display:flex;white-space:nowrap;animation:ticker-scroll 35s linear infinite">
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🔥 LeBron James — 19.9 PPG in last 10 games</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">📊 Luka Doncic averaging triple-double in last 10 games</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🏀 Celtics — 12-game win streak, longest since 2018</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">⭐ Victor Wembanyama — 4.8 BPG in April</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">💥 Shai Gilgeous-Alexander — 35.2 PPG in clutch situations</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">📈 Nikola Jokic — 15th triple-double of the season</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🎯 Stephen Curry — 43.2% from three this season</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🔥 Jayson Tatum — 12 straight 25+ point games</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🔥 LeBron James — 19.9 PPG in last 10 games</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">📊 Luka Doncic averaging triple-double in last 10 games</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🏀 Celtics — 12-game win streak, longest since 2018</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">⭐ Victor Wembanyama — 4.8 BPG in April</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">💥 Shai Gilgeous-Alexander — 35.2 PPG in clutch situations</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">📈 Nikola Jokic — 15th triple-double of the season</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🎯 Stephen Curry — 43.2% from three this season</span>
+    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🔥 Jayson Tatum — 12 straight 25+ point games</span>
+  </div>
+</div>
 <div class="app">
 
 <header>
   <div class="logo"><span class="stat">Stat</span><span class="mind">Mind</span><span class="logo-dot"></span></div>
   <div style="display:flex;align-items:center;gap:10px">
-    <div class="header-tag" style="display:flex;align-items:center;gap:6px;border-color:rgba(247,148,29,.35);color:var(--accent)">
+    <div class="header-tag" style="display:flex;align-items:center;gap:6px;border-color:rgba(212,245,66,.35);color:var(--accent)">
       <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse-dot 2s ease-in-out infinite;flex-shrink:0"></span>
       AI Powered
     </div>
@@ -251,7 +276,7 @@ tbody td { padding: 8px 10px; white-space: nowrap; transition: font-size .15s ea
 </section>
 
 <div id="progress-panel">
-  <div class="progress-title">Analyzing your query</div>
+  <div id="stepper-row" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:32px 0 20px"></div>
   <div id="progress-steps"></div>
 </div>
 
@@ -297,9 +322,9 @@ function teamColor(abbr, preferSecondary) {
   // Returns a color that is:
   //   1. Visually distinct on a dark (#080c12) background (luminance > 50)
   //   2. Not pure white or near-white (which looks like default)
-  if (!abbr) return '#f7941d';
+  if (!abbr) return '#d4f542';
   var entry = TC[abbr.toUpperCase()];
-  if (!entry) return '#f7941d';
+  if (!entry) return '#d4f542';
   var primary   = entry[0];
   var secondary = entry[1];
   if (preferSecondary) {
@@ -405,11 +430,66 @@ function setLoading(on) {
 }
 
 function addStep(icon, txt, hi) {
+  /*
+  addStep
+  -------
+  Appends a progress step item to the progress steps list and scrolls it into view.
+
+  Args:
+    icon (string): Icon character or emoji to show on the left
+    txt (string): Text description of the step
+    hi (boolean): If true, applies the highlighted (active) step style
+
+  Returns: void
+  */
   var el = document.createElement('div');
   el.className = hi ? 'step hi' : 'step';
   el.innerHTML = '<span>' + icon + '</span><span>' + txt + '</span>';
   document.getElementById('progress-steps').appendChild(el);
   el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function updateStepper(stepIdx) {
+  /*
+  updateStepper
+  -------------
+  Renders the 3-step circular progress stepper UI showing which step is current.
+  Steps: 0=Parsing query, 1=Fetching stats, 2=Analyzing.
+  Completed steps show a checkmark; the current step is outlined in accent color.
+
+  Args:
+    stepIdx (number): Index of the currently active step (0, 1, or 2)
+
+  Returns: void
+  */
+  var labels = ['Parsing query', 'Fetching stats', 'Analyzing'];
+  var html = '';
+  labels.forEach(function(lbl, i) {
+    var isDone    = i < stepIdx;
+    var isCurrent = i === stepIdx;
+    var circStyle = isDone
+      ? 'background:var(--tp);border-color:var(--tp);color:#000'
+      : isCurrent
+        ? 'border-color:var(--tp);color:var(--tp)'
+        : 'border-color:var(--border);color:var(--muted)';
+    html += '<div style="display:flex;align-items:center;gap:8px">';
+    html += '<div style="width:32px;height:32px;border-radius:50%;border:2px solid;'
+      + 'display:flex;align-items:center;justify-content:center;'
+      + 'font-family:\'Barlow Condensed\',sans-serif;font-size:.8rem;font-weight:700;'
+      + 'transition:all .3s;' + circStyle + '">'
+      + (isDone ? '✓' : (i + 1)) + '</div>';
+    html += '<span style="font-size:.75rem;color:'
+      + (isDone ? 'var(--tp)' : (isCurrent ? 'var(--text)' : 'var(--muted)'))
+      + ';display:none" class="step-label">' + lbl + '</span>';
+    if (i < labels.length - 1) {
+      html += '<div style="width:40px;height:2px;background:'
+        + (isDone ? 'var(--tp)' : 'var(--border)')
+        + ';margin:0 4px;transition:background .3s"></div>';
+    }
+    html += '</div>';
+  });
+  var row = document.getElementById('stepper-row');
+  if (row) row.innerHTML = html;
 }
 
 function fmt(v, d) {
@@ -511,7 +591,8 @@ function submitQuery() {
   document.getElementById('results').innerHTML = '';
   document.getElementById('results').classList.remove('visible');
   document.getElementById('progress-panel').classList.add('active');
-  document.documentElement.style.setProperty('--tp', '#f7941d');
+  document.documentElement.style.setProperty('--tp', '#d4f542');
+  updateStepper(0);
 
   fetch('/api/query', {
     method: 'POST',
@@ -537,9 +618,9 @@ function listenStream(jobId) {
 }
 
 function handleEvent(type, data) {
-  if (type === 'thinking' || type === 'message') { addStep('>', data, true); }
-  else if (type === 'tool_start') { addStep('*', data, true); }
-  else if (type === 'tool_result') { addStep('+', data, false); }
+  if (type === 'thinking' || type === 'message') { updateStepper(0); addStep('>', data, true); }
+  else if (type === 'tool_start') { updateStepper(1); addStep('*', data, true); }
+  else if (type === 'tool_result') { updateStepper(2); addStep('+', data, false); }
   else if (type === 'result') {
     try {
       var parsed = JSON.parse(data);
@@ -575,13 +656,15 @@ function renderResults(d) {
   var c = document.getElementById('results');
   c.innerHTML = '';
   document.getElementById('progress-panel').classList.remove('active');
+  document.documentElement.style.setProperty('--tp', '#d4f542');
   if (d.player && d.player.team_abbr) applyTeamColor(d.player.team_abbr);
-  if (d.type === 'vs_team')      renderVsTeam(d, c);
-  else if (d.type === 'conditional') renderConditional(d, c);
-  else if (d.type === 'h2h')         renderH2H(d, c);
-  else if (d.type === 'career')      renderCareer(d, c);
-  else if (d.type === 'compare')     { renderCompare(d, c); fetchH2HMatrix(); }
-  else if (d.type === 'leaderboard') renderLeaderboard(d, c);
+  if (d.type === 'vs_team')        renderVsTeam(d, c);
+  else if (d.type === 'conditional')  renderConditional(d, c);
+  else if (d.type === 'h2h')          renderH2H(d, c);
+  else if (d.type === 'career')       renderCareer(d, c);
+  else if (d.type === 'last_n_games') renderLastNGames(d, c);
+  else if (d.type === 'compare')      { renderCompare(d, c); fetchH2HMatrix(); }
+  else if (d.type === 'leaderboard')  renderLeaderboard(d, c);
   else c.innerHTML = '<pre style="color:var(--muted)">' + JSON.stringify(d, null, 2) + '</pre>';
   c.classList.add('visible');
 }
@@ -621,9 +704,9 @@ function playerHeaderHtml(player, rightHtml, extras, opts) {
   } else {
     if (player.team || player.team_abbr) {
       var teamLabel = player.team || player.team_abbr;
-      metas += '<div class="meta-tag">Team <span>' + teamLabel + '</span></div>';
+      metas += '<span class="badge-pill">' + teamLabel + '</span>';
     }
-    if (player.position) metas += '<div class="meta-tag">Pos <span>' + player.position + '</span></div>';
+    if (player.position) metas += '<span class="badge-pill">' + player.position + '</span>';
     extras.forEach(function(e) { metas += e; });
   }
   var secondRow = opts.secondRow
@@ -654,7 +737,9 @@ function insightHtml(text) {
     .replace(/(<li>.*<\/li>)/s, '<ul style="margin:.5em 0 .5em 1.2em;padding:0">$1</ul>')
     .replace(/\n\n+/g, '</p><p style="margin:.6em 0 0">')                // paragraphs
     .replace(/\n/g, ' ');                                                  // soft newlines
-  return '<div class="insight-block"><p style="margin:0">' + html + '</p></div>';
+  return '<div class="insight-block"><p style="margin:0;opacity:.9">"' + html + '"</p>'
+    + '<p style="margin-top:10px;font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;'
+    + 'font-style:normal;font-family:\'DM Mono\',monospace;color:var(--muted)">AI Insight</p></div>';
 }
 
 // ─── vs_team ─────────────────────────────────────────────────────────────────
@@ -771,8 +856,10 @@ function renderConditional(d, c) {
   + (pills ? '<div class="cond-row">' + pills + '</div>' : '')
   + insightHtml(d.insight)
   + '<div class="split-grid">'
-  +   '<div class="split-card primary"><div class="split-title">' + primLbl + '</div><div id="split-p"></div></div>'
-  +   '<div class="split-card secondary"><div class="split-title dim">' + cmpLbl + '</div><div id="split-c"></div></div>'
+  +   '<div class="split-card"><div class="split-card-bar" style="background:var(--tp)"></div>'
+  +     '<div class="split-card-body"><div class="split-title">' + primLbl + '</div><div id="split-p"></div></div></div>'
+  +   '<div class="split-card"><div class="split-card-bar" style="background:rgba(255,255,255,.12)"></div>'
+  +     '<div class="split-card-body"><div class="split-title dim">' + cmpLbl + '</div><div id="split-c"></div></div></div>'
   + '</div>'
   + '<div class="donuts-row" id="donuts"></div>'
   + '<div class="charts-row"><div class="chart-card full"><div class="chart-title">Stat comparison</div>'
@@ -861,7 +948,7 @@ function renderH2H(d, c) {
   var barLosePct = 100 - barWinPct;
 
   var recordHtml = totalG > 0
-    ? '<div style="background:var(--surface2);border-radius:10px;padding:20px 24px;text-align:center;margin-bottom:28px">'
+    ? '<div style="background:var(--surface2);border-radius:var(--radius);padding:20px 24px;text-align:center;margin-bottom:28px">'
       + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.65rem;font-weight:700;'
       +   'letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">'
       +   '<span style="color:' + winCol + '">' + winShort + '</span>'
@@ -981,6 +1068,151 @@ function renderH2H(d, c) {
 }
 
 // ─── career ──────────────────────────────────────────────────────────────────
+// ─── last_n_games ─────────────────────────────────────────────────────────────
+function renderLastNGames(d, c) {
+  var player  = d.player  || {};
+  var avg     = d.averages || {};
+  var log     = d.game_log || [];
+  var n       = d.n_returned || log.length;
+  var season  = d.season || '2025-26';
+  var lastDate = d.last_game_date || '';
+  var col     = teamColor(player.team_abbr);
+
+  var nMeta   = '<div class="meta-tag">Last <span>' + n + ' Games</span></div>';
+  var snMeta  = '<div class="meta-tag">Season <span>' + season + '</span></div>';
+  var dateStr = lastDate ? lastDate.replace(/(\d{4})-(\d{2})-(\d{2})/, function(_, y,m,dd) {
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return months[parseInt(m,10)-1] + ' ' + parseInt(dd,10) + ', ' + y;
+  }) : '';
+  var dateMeta = dateStr ? '<div class="meta-tag">Through <span>' + dateStr + '</span></div>' : '';
+
+  c.innerHTML = playerHeaderHtml(player, null, [nMeta, snMeta, dateMeta])
+    + insightHtml(d.insight)
+    + '<div id="ln-stat-cards" style="margin:18px 0 6px"></div>'
+    + '<div style="margin:20px 0 8px">'
+    +   '<div class="section-title">Last ' + n + ' Games — PTS / REB / AST</div>'
+    +   '<div style="position:relative;height:220px;margin-top:10px"><canvas id="ln-chart"></canvas></div>'
+    + '</div>'
+    + '<div id="ln-log" style="margin-top:20px"></div>';
+
+  buildStatCards('ln-stat-cards', avg);
+  buildLastNChart('ln-chart', log, player);
+  buildGameLog('ln-log', log, null);
+}
+
+// buildLastNChart
+// ---------------
+// Renders a grouped bar chart (PTS / REB / AST per game) for the last N games.
+// Games are displayed oldest-first on the x-axis so the line reads left-to-right
+// in time order. Each game label shows the opponent abbreviation and date.
+//
+// Args:
+//   canvasId (string): ID of the <canvas> element to draw into
+//   log      (Array):  Array of game-log rows (newest-first from backend)
+//   player   (Object): Player object with team_abbr for color
+//
+// Returns: void (draws directly onto canvas)
+function buildLastNChart(canvasId, log, player) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas || !log || !log.length) return;
+
+  // Reverse so oldest game is on the left
+  var reversed = log.slice().reverse();
+
+  var labels = reversed.map(function(r) {
+    // Build "OPP\nMMM DD" label — matchup is like "LAL vs. BOS" or "LAL @ BOS"
+    var matchup = (r.matchup || '').split(' ').pop();  // last word = opponent abbr
+    var date    = (r.date || r.game_date || '').replace(/(\d{4})-(\d{2})-(\d{2})/, function(_, y, m, dd) {
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return months[parseInt(m,10)-1] + ' ' + parseInt(dd,10);
+    });
+    return [matchup, date];
+  });
+
+  var pts = reversed.map(function(r) { return r.pts || 0; });
+  var reb = reversed.map(function(r) { return r.reb || 0; });
+  var ast = reversed.map(function(r) { return r.ast || 0; });
+
+  var col     = teamColor(player.team_abbr);
+  var colSec  = teamColor(player.team_abbr, true);
+  var colGrey = '#64748b';
+
+  if (window._lnChart instanceof Chart) {
+    window._lnChart.destroy();
+    window._lnChart = null;
+  }
+
+  window._lnChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'PTS',
+          data: pts,
+          backgroundColor: col + 'cc',
+          borderColor: col,
+          borderWidth: 1,
+          borderRadius: 3,
+        },
+        {
+          label: 'REB',
+          data: reb,
+          backgroundColor: colSec + 'cc',
+          borderColor: colSec,
+          borderWidth: 1,
+          borderRadius: 3,
+        },
+        {
+          label: 'AST',
+          data: ast,
+          backgroundColor: colGrey + 'cc',
+          borderColor: colGrey,
+          borderWidth: 1,
+          borderRadius: 3,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: {
+            color: '#94a3b8',
+            font: { size: 11 },
+            boxWidth: 12,
+            padding: 14,
+          },
+        },
+        tooltip: {
+          backgroundColor: 'rgba(10,16,28,.92)',
+          titleColor: '#e2e8f0',
+          bodyColor: '#94a3b8',
+          borderColor: 'rgba(255,255,255,.08)',
+          borderWidth: 1,
+        },
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: '#64748b',
+            font: { size: 10 },
+            maxRotation: 0,
+          },
+          grid: { color: 'rgba(255,255,255,.04)' },
+        },
+        y: {
+          ticks: { color: '#64748b', font: { size: 11 } },
+          grid: { color: 'rgba(255,255,255,.06)' },
+          beginAtZero: true,
+        },
+      },
+    },
+  });
+}
+
 function renderCareer(d, c) {
   var allSeasons = d.seasons || [];
   var allPsn     = d.playoff_seasons || [];
@@ -1317,130 +1549,117 @@ function buildStatCardsCareer(elId, tot) {
   el.innerHTML = html;
 }
 
-// ─── Donut charts ─────────────────────────────────────────────────────────────
+// ─── Donut charts (SVG implementation) ───────────────────────────────────────
 function buildDonuts(containerId, avgA, avgB, labelA, labelB, colA, colB) {
-  var container = document.getElementById(containerId);
-  if (!container) return;
-  var isComp = !!avgB;
-  var cA = colA || getComputedStyle(document.documentElement).getPropertyValue('--tp').trim() || '#f7941d';
-  var cB = colB || '#00c8ff';
+  /*
+  buildDonuts
+  -----------
+  Renders SVG-based donut charts for FG%, 3P%, and FT% shooting percentages.
+  Replaces the old Chart.js doughnut implementation with animated SVG circles.
 
-  var donuts = [
-    { id: 'dn-fg',  lbl: 'Field Goal %',  key: 'fg_pct',  volKey: 'fga',  volLbl: 'FGA/g',  max: 70  },
-    { id: 'dn-3p',  lbl: '3-Point %',     key: 'fg3_pct', volKey: 'fg3a', volLbl: '3PA/g',  max: 50  },
-    { id: 'dn-ft',  lbl: 'Free Throw %',  key: 'ft_pct',  volKey: 'fta',  volLbl: 'FTA/g',  max: 100 }
-  ];
+  Args:
+    containerId (string): ID of the container element to render into
+    avgA (object): Averages object for the primary player (must have fg_pct, fg3_pct, ft_pct)
+    avgB (object|null): Averages for a secondary player (H2H/compare mode). Pass null for single player.
+    labelA (string): Display name for player A
+    labelB (string): Display name for player B
+    colA (string): Color for player A's arcs
+    colB (string): Color for player B's arcs
 
-  var html = '';
-  donuts.forEach(function(dn) {
-    html += '<div class="donut-card" style="position:relative">'
-      + '<div class="donut-lbl">' + dn.lbl + '</div>'
-      + '<div class="donut-canvas-wrap"><canvas id="' + dn.id + '"></canvas></div>'
-      // Static % always shown below arc; comparison also gets the secondary sub label
-      + '<div class="donut-val" id="' + dn.id + '-v">0%</div>'
-      + (isComp ? '<div class="donut-sub" id="' + dn.id + '-s">0%</div>' : '')
-      // Hover tooltip for attempts (single-player only)
-      + (!isComp
-          ? '<div id="' + dn.id + '-tip" style="'
-              + 'display:none;position:absolute;bottom:10px;left:50%;transform:translateX(-50%);'
-              + 'background:#0e1520;border:1px solid rgba(255,255,255,.1);border-radius:6px;'
-              + 'padding:5px 10px;font-size:.72rem;white-space:nowrap;pointer-events:none;'
-              + 'font-family:\'DM Mono\',monospace;letter-spacing:.04em;z-index:10"></div>'
-          : '')
+  Returns: void (renders HTML directly into the container element)
+  */
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  colA = colA || getComputedStyle(document.documentElement).getPropertyValue('--tp').trim() || '#d4f542';
+  colB = colB || 'rgba(255,255,255,.35)';
+
+  function donutSvg(pct, color, label, id) {
+    /*
+    donutSvg
+    --------
+    Generates an SVG donut with an animated fill arc and a percentage label.
+
+    Args:
+      pct (number): Percentage value (0-100)
+      color (string): Stroke color for the filled arc
+      label (string): Text label shown below the donut
+      id (string): Unique SVG element ID used for animation targeting
+
+    Returns:
+      string: HTML string containing the SVG donut and label
+    */
+    var r = 40;
+    var circ = 2 * Math.PI * r;
+    return '<div style="display:flex;flex-direction:column;align-items:center;gap:8px">'
+      + '<svg id="' + id + '" width="100" height="100" viewBox="0 0 100 100">'
+      + '<circle cx="50" cy="50" r="' + r + '" fill="none" stroke="var(--border)" stroke-width="8"/>'
+      + '<circle cx="50" cy="50" r="' + r + '" fill="none"'
+      + ' stroke="' + color + '" stroke-width="8" stroke-linecap="round"'
+      + ' stroke-dasharray="' + circ.toFixed(2) + '"'
+      + ' stroke-dashoffset="' + circ.toFixed(2) + '"'
+      + ' transform="rotate(-90 50 50)"'
+      + ' style="transition:stroke-dashoffset 1s ease;"/>'
+      + '<text x="50" y="50" text-anchor="middle" dominant-baseline="central"'
+      + ' font-family="\'Barlow Condensed\',sans-serif" font-size="16" font-weight="700"'
+      + ' fill="var(--text)">' + pct.toFixed(1) + '%</text>'
+      + '</svg>'
+      + '<span style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)">' + label + '</span>'
       + '</div>';
-  });
-  container.innerHTML = html;
+  }
 
-  donuts.forEach(function(dn) {
-    var vA = parseFloat((avgA[dn.key] !== undefined ? avgA[dn.key] : 0) || 0);
-    var vB = isComp ? parseFloat((avgB[dn.key] !== undefined ? avgB[dn.key] : 0) || 0) : null;
-    var ctx = document.getElementById(dn.id);
-    if (!ctx) return;
-    var context = ctx.getContext('2d');
-    destroyChart(dn.id);
+  var fgA  = parseFloat(avgA.fg_pct  || 0);
+  var fg3A = parseFloat(avgA.fg3_pct || 0);
+  var ftA  = parseFloat(avgA.ft_pct  || 0);
 
-    if (isComp) {
-      charts[dn.id] = new Chart(context, {
-        type: 'doughnut',
-        data: {
-          datasets: [
-            {
-              data: [vA, Math.max(0, dn.max - vA)],
-              backgroundColor: [cA, 'rgba(255,255,255,0.04)'],
-              borderWidth: 0,
-              circumference: 270,
-              rotation: 225
-            },
-            {
-              data: [vB, Math.max(0, dn.max - vB)],
-              backgroundColor: [cB, 'rgba(255,255,255,0.04)'],
-              borderWidth: 0,
-              circumference: 270,
-              rotation: 225
-            }
+  var html = '<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:28px;padding:10px 0">';
+  if (avgB) {
+    // Two-player mode: show both players side by side per stat
+    var fgB  = parseFloat(avgB.fg_pct  || 0);
+    var fg3B = parseFloat(avgB.fg3_pct || 0);
+    var ftB  = parseFloat(avgB.ft_pct  || 0);
+    html += donutSvg(fgA,  colA, (labelA || 'Player 1') + ' FG%',  'fg-donut-a');
+    html += donutSvg(fgB,  colB, (labelB || 'Player 2') + ' FG%',  'fg-donut-b');
+    html += donutSvg(fg3A, colA, (labelA || 'Player 1') + ' 3P%',  'fg3-donut-a');
+    html += donutSvg(fg3B, colB, (labelB || 'Player 2') + ' 3P%',  'fg3-donut-b');
+    html += donutSvg(ftA,  colA, (labelA || 'Player 1') + ' FT%',  'ft-donut-a');
+    html += donutSvg(ftB,  colB, (labelB || 'Player 2') + ' FT%',  'ft-donut-b');
+  } else {
+    html += donutSvg(fgA,  colA, 'FG%',  'fg-donut');
+    html += donutSvg(fg3A, colA, '3P%',  'fg3-donut');
+    html += donutSvg(ftA,  colA, 'FT%',  'ft-donut');
+  }
+  html += '</div>';
+
+  el.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">' + html + '</div>';
+
+  // Animate: after DOM settles, set stroke-dashoffset to target value
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      var sets = avgB
+        ? [
+            ['fg-donut-a',  fgA,  2 * Math.PI * 40],
+            ['fg-donut-b',  parseFloat(avgB.fg_pct  || 0), 2 * Math.PI * 40],
+            ['fg3-donut-a', fg3A, 2 * Math.PI * 40],
+            ['fg3-donut-b', parseFloat(avgB.fg3_pct || 0), 2 * Math.PI * 40],
+            ['ft-donut-a',  ftA,  2 * Math.PI * 40],
+            ['ft-donut-b',  parseFloat(avgB.ft_pct  || 0), 2 * Math.PI * 40],
           ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: '58%',
-          plugins: { legend: { display: false }, tooltip: { enabled: false } }
-        }
+        : [
+            ['fg-donut',  fgA,  2 * Math.PI * 40],
+            ['fg3-donut', fg3A, 2 * Math.PI * 40],
+            ['ft-donut',  ftA,  2 * Math.PI * 40],
+          ];
+      sets.forEach(function(s) {
+        var id   = s[0];
+        var pct  = s[1];
+        var circ = s[2];
+        var svg  = document.getElementById(id);
+        if (!svg) return;
+        var circles = svg.querySelectorAll('circle');
+        var arc = circles[1];
+        if (arc) arc.style.strokeDashoffset = (circ - (pct / 100) * circ).toFixed(2);
       });
-      var vEl = document.getElementById(dn.id + '-v');
-      var sEl = document.getElementById(dn.id + '-s');
-      // Always show the BIGGER value as the prominent large number
-      var bigVal, bigCol, smallVal, smallCol;
-      if (vA >= vB) {
-        bigVal = vA; bigCol = cA; smallVal = vB; smallCol = cB;
-      } else {
-        bigVal = vB; bigCol = cB; smallVal = vA; smallCol = cA;
-      }
-      if (vEl) { vEl.textContent = fmtPct(bigVal);   vEl.style.color = bigCol; }
-      if (sEl) { sEl.textContent = fmtPct(smallVal); sEl.style.color = smallCol; }
-    } else {
-      var fillColor = cA;
-      charts[dn.id] = new Chart(context, {
-        type: 'doughnut',
-        data: {
-          datasets: [{
-            data: [vA, Math.max(0, dn.max - vA)],
-            backgroundColor: [fillColor, 'rgba(255,255,255,0.04)'],
-            borderWidth: 0,
-            circumference: 270,
-            rotation: 225
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: '68%',
-          plugins: { legend: { display: false }, tooltip: { enabled: false } }
-        }
-      });
-
-      // Static % below arc
-      var valEl = document.getElementById(dn.id + '-v');
-      if (valEl) { valEl.textContent = fmtPct(vA); valEl.style.color = fillColor; }
-
-      // Hover tooltip: attempts/volume only (% is already shown below the arc)
-      (function(dnId, dnVolKey, dnVolLbl, col) {
-        var tipEl  = document.getElementById(dnId + '-tip');
-        var canvas = document.getElementById(dnId);
-        if (!tipEl || !canvas) return;
-        var volVal = avgA[dnVolKey] !== undefined ? parseFloat(avgA[dnVolKey]) : null;
-        if (volVal === null) return;
-        var tipContent = '<span style="color:' + col + ';font-weight:700">'
-          + fmt(volVal) + ' ' + dnVolLbl + '</span>';
-        canvas.addEventListener('mouseenter', function() {
-          tipEl.innerHTML = tipContent;
-          tipEl.style.display = 'block';
-        });
-        canvas.addEventListener('mouseleave', function() {
-          tipEl.style.display = 'none';
-        });
-      })(dn.id, dn.volKey, dn.volLbl, fillColor);
-    }
+    });
   });
 }
 
@@ -2068,7 +2287,7 @@ function fetchH2HMatrix() {
       var barWinPct  = totalPrimary > 0 ? (primaryWins / totalPrimary * 100) : 50;
       var barLosePct = 100 - barWinPct;
 
-      return '<div style="background:var(--surface2);border-radius:10px;padding:20px 24px;text-align:center">'
+      return '<div style="background:var(--surface2);border-radius:var(--radius);padding:20px 24px;text-align:center">'
         // Header
         + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.65rem;font-weight:700;'
         +   'letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">'
@@ -2179,7 +2398,7 @@ function renderCompare(d, c) {
     var avg = p.averages || {};
     var seriesCount = (p.series || []).length;
     html += '<div style="background:var(--surface);border:1px solid var(--border);border-top:3px solid '
-      + col + ';border-radius:12px;padding:20px 18px">'
+      + col + ';border-radius:var(--radius);padding:20px 18px">'
       // Headshot + name row
       + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">'
       +   '<img src="' + hs + '" onerror="this.style.display=\'none\'"'
@@ -2283,7 +2502,7 @@ function renderCompare(d, c) {
 
   // ── H2H matrix visual (populated async after render) ────────────────────
   html += '<div id="h2h-matrix-card" style="background:var(--surface);border:1px solid var(--border);'
-    + 'border-radius:14px;padding:24px 28px;margin-bottom:32px">'
+    + 'border-radius:var(--radius);padding:24px 28px;margin-bottom:32px">'
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:.62rem;font-weight:700;'
     +   'letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:20px">'
     +   'Head-to-Head Records</div>'
@@ -2631,7 +2850,7 @@ function renderLeaderboard(d, c) {
     el.innerHTML = top3.map(function(row, i) {
       var medal  = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
       var tColor = teamColor(row.team);
-      return '<div style="background:var(--surface);border:1px solid var(--border);border-top:3px solid ' + tColor + ';border-radius:12px;padding:12px;display:flex;gap:10px;align-items:center">'
+      return '<div style="background:var(--surface);border:1px solid var(--border);border-top:3px solid ' + tColor + ';border-radius:var(--radius);padding:12px;display:flex;gap:10px;align-items:center">'
         + '<img src="' + (row.headshot_url || hsUrl(row.player_id)) + '" onerror="onHsError(this,\'' + (row.name || '').replace(/'/g,'') + '\')" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid ' + tColor + '">'
         + '<div style="min-width:0"><div style="font-size:.65rem;color:var(--muted)">' + medal + ' #' + row.rank + '</div>'
         + '<div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (row.name || '') + '</div>'

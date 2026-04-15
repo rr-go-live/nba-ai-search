@@ -1786,6 +1786,73 @@ def get_leaderboard(
 # Player Awards / Accolades
 # ─────────────────────────────────────────────────────────────────────────────
 
+def get_player_last_n_games(
+    player_id: int,
+    n: int,
+    season: str = DEFAULT_SEASON,
+) -> dict:
+    """Fetch the most recent N regular-season games for a player.
+
+    Fetches the full current-season game log, sorts newest-first, slices to N,
+    and returns per-game rows plus averaged stats across those games.
+
+    Args:
+        player_id (int): NBA player ID from search_player.
+        n (int): Number of most-recent games to return (e.g. 5, 10, 20).
+        season (str): Season string, defaults to current (2025-26).
+
+    Returns:
+        dict: {
+            season, n_requested, n_returned,
+            averages: {pts, reb, ast, stl, blk, tov, fg_pct, fg3_pct,
+                       ft_pct, fga, fg3a, fta, gp, wins, losses},
+            game_log: list of _to_row dicts newest-first,
+            last_game_date: ISO date string of the most recent game or ""
+        }
+    """
+    n = max(1, int(n))   # guard against float / zero input from LLM
+
+    empty = {
+        "season":         season,
+        "n_requested":    n,
+        "n_returned":     0,
+        "averages":       {},
+        "game_log":       [],
+        "last_game_date": "",
+    }
+
+    try:
+        raw_rows = _game_log(player_id, season, "Regular Season")
+    except Exception as exc:
+        logger.warning(f"get_player_last_n_games {player_id}: {exc}")
+        return {**empty, "error": str(exc)}
+
+    if not raw_rows:
+        return {**empty, "error": f"No {season} regular-season games found."}
+
+    # Sort newest-first using the ISO date helper so cross-month order is correct
+    raw_rows_sorted = sorted(
+        raw_rows,
+        key=lambda r: _parse_date_sort(r.get("GAME_DATE", "")),
+        reverse=True,
+    )
+
+    sliced       = raw_rows_sorted[:n]
+    actual_n     = len(sliced)
+    last_date    = _parse_date_sort(sliced[0].get("GAME_DATE", "")) if sliced else ""
+    game_log_out = [_to_row(r) for r in sliced]
+    averages_out = _avg(sliced)
+
+    return {
+        "season":         season,
+        "n_requested":    n,
+        "n_returned":     actual_n,
+        "averages":       averages_out,
+        "game_log":       game_log_out,  # newest-first; frontend reverses for charts
+        "last_game_date": last_date,
+    }
+
+
 def get_player_awards(player_id: int) -> list:
     """Fetch and aggregate player career awards into a badge list.
 

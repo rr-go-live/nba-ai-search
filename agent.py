@@ -153,6 +153,15 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
     most 3-pointers made / three-point leaders                   → stat="fg3m"
     best efficiency / PER-like                                   → stat="eff"
 
+▸ LAST N GAMES (recent form, current season):
+  "LeBron last 10 games" / "Curry recent form" / "how has Giannis been playing"
+  "Tatum last 5 games stats" / "what has Embiid done lately"
+  → Step 1: search_player to get player_id
+  → Step 2: get_last_n_games(player_id, n)
+  → Output type: "last_n_games"
+  Default n=10 when the user doesn't specify a number.
+  Always uses the current season (2025-26).
+
 ▸ H2H / Head-to-Head (BOTH PLAYERS ACTIVE):
   "LeBron vs Curry H2H" / "LeBron head to head with Curry" / "when they match up"
   → H2H means games where BOTH players were active in the same game.
@@ -618,6 +627,25 @@ COMPARE TITLE FORMAT:
 }
 ```
 
+─── TYPE: last_n_games ───────────────────────────────────────
+```json
+{
+  "type": "last_n_games",
+  "player": { ...player object... },
+  "n_requested": 10,
+  "n_returned": 10,
+  "season": "2025-26",
+  "last_game_date": "2026-04-10",
+  "averages": {
+    "gp": 10, "pts": 0.0, "reb": 0.0, "ast": 0.0, "stl": 0.0, "blk": 0.0,
+    "tov": 0.0, "fg_pct": 0.0, "fg3_pct": 0.0, "fg3a": 0.0, "ft_pct": 0.0,
+    "wins": 0, "losses": 0
+  },
+  "game_log": [],
+  "insight": "Concise analysis of the player's recent form and standout performances."
+}
+```
+
 IMPORTANT: Every numeric field must be a number (0.0 not null). team must never be empty — use "TOT" for traded players."""
 
 
@@ -732,6 +760,16 @@ class NBAStatsAgent:
                         if attempt == 2:
                             progress_cb("error", "Quota exhausted. Try again later.")
                             return {"success": False, "error": "Gemini API quota exhausted. The free tier allows 1500 requests/day. Please wait and retry."}
+                    elif "503" in err_str or "UNAVAILABLE" in err_str:
+                        # Transient server overload — retry with a short backoff
+                        wait = 8 * (attempt + 1)
+                        logger.warning(f"Gemini 503 — retrying in {wait}s (attempt {attempt+1})")
+                        progress_cb("thinking", f"Server busy — retrying in {wait}s…")
+                        time.sleep(wait)
+                        if attempt == 2:
+                            logger.error("[DEBUG] Gemini 503 after 3 attempts — returning error")
+                            progress_cb("error", err_str)
+                            return {"success": False, "error": "Gemini is currently overloaded. Please try again in a few minutes."}
                     else:
                         logger.error(f"[DEBUG] Gemini API error (iter={iteration} attempt={attempt+1}): {type(e).__name__}: {e}")
                         progress_cb("error", err_str)
@@ -1090,6 +1128,48 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
         if "playoff_best"         in raw: result["playoff_best"]         = raw["playoff_best"]
         if "playoff_career_highs" in raw: result["playoff_career_highs"] = raw["playoff_career_highs"]
 
+    elif result_type == "career" and not career_results:
+        # Gemini skipped the get_career_stats tool call and output the empty JSON
+        # template directly. Auto-fetch career data from the NBA API using the
+        # player_id resolved by search_player (already in the cache).
+        player_id = (
+            result.get("player", {}).get("player_id")
+            or result.get("player", {}).get("id")
+            or (search_player_results[-1].get("player_id") if search_player_results else None)
+        )
+        if player_id:
+            logger.warning(
+                f"[career-fallback] Gemini skipped get_career_stats for player_id={player_id}; "
+                "fetching directly from NBA API."
+            )
+            raw = nba.get_player_career_stats(int(player_id))
+            if "seasons"              in raw: result["seasons"]              = raw["seasons"]
+            if "playoff_seasons"      in raw: result["playoff_seasons"]      = raw["playoff_seasons"]
+            if "career_totals"        in raw: result["career_totals"]        = raw["career_totals"]
+            if "playoff_totals"       in raw: result["playoff_totals"]       = raw["playoff_totals"]
+            if "career_highs"         in raw: result["career_highs"]         = raw["career_highs"]
+            if "regular_season_best"  in raw: result["regular_season_best"]  = raw["regular_season_best"]
+            if "playoff_best"         in raw: result["playoff_best"]         = raw["playoff_best"]
+            if "playoff_career_highs" in raw: result["playoff_career_highs"] = raw["playoff_career_highs"]
+
+    elif result_type == "last_n_games":
+        # Pull the authoritative game log and averages from the tool cache so the
+        # model cannot reformat or truncate the data.
+        last_n_results = [
+            entry["result"]
+            for entry in cache.values()
+            if entry.get("name") == "get_last_n_games"
+        ]
+        if last_n_results:
+            raw = last_n_results[-1]
+            if "game_log"   in raw: result["game_log"]   = raw["game_log"]
+            if "averages"   in raw: result["averages"]   = raw["averages"]
+            if "n_returned" in raw: result["n_returned"] = raw["n_returned"]
+            if "n_requested" in raw: result["n_requested"] = raw["n_requested"]
+            if "season"     in raw: result["season"]     = raw["season"]
+            if raw.get("last_game_date"):
+                result["last_game_date"] = raw["last_game_date"]
+
     elif result_type == "h2h":
         if len(cond_results) >= 2:
             result["player_log"]     = cond_results[0].get("primary_log",    result.get("player_log",   []))
@@ -1221,6 +1301,9 @@ def _describe_tool(name: str, inp: dict) -> str:
         # Show season range from first player config if available
         rng = _season_range_label(players[0]) if players else ""
         return f"📊 Fetching stats for {n} player{'s' if n != 1 else ''}" + (f" · **{rng}**" if rng else "") + "…"
+    if name == "get_last_n_games":
+        n = inp.get("n", 10)
+        return f"📅 Fetching last **{n} games** (2025-26 season)…"
     if name == "get_leaderboard":
         return f"🏆 Loading {inp.get('stat','pts').upper()} leaderboard ({inp.get('season','')})…"
     return f"🔧 {name}"
@@ -1247,6 +1330,10 @@ def _summarise(name: str, result: dict) -> str:
         n = len(result.get("seasons", []))
         p = len(result.get("playoff_seasons", []))
         return f"✅ {n} regular seasons, {p} playoff seasons"
+    if name == "get_last_n_games":
+        n_ret = result.get("n_returned", 0)
+        pts   = (result.get("averages") or {}).get("pts", 0)
+        return f"✅ {n_ret} games — **{pts} PPG** average"
     return "✅ Done"
 
 

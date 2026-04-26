@@ -1002,7 +1002,7 @@ function renderLastNGames(d, c) {
 
   c.innerHTML = playerHeaderHtml(player, null, [nMeta, snMeta, dateMeta])
     + insightHtml(d.insight)
-    + '<div id="ln-stat-cards" style="margin:18px 0 6px"></div>'
+    + '<div class="stat-grid" id="ln-stat-cards" style="margin:18px 0 6px"></div>'
     + '<div id="ln-log" style="margin-top:20px"></div>';
 
   buildStatCards('ln-stat-cards', avg);

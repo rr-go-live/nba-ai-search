@@ -1786,39 +1786,113 @@ def get_leaderboard(
 # Player Awards / Accolades
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _parse_user_date(date_str: str) -> str:
+    """Normalise a user-supplied date to ISO YYYY-MM-DD format.
+
+    Accepts:
+        "YYYY-MM-DD"  — already ISO, returned as-is
+        "M/D/YY"      — e.g. "1/1/26"  → "2026-01-01"
+        "M/D/YYYY"    — e.g. "1/1/2026" → "2026-01-01"
+
+    Args:
+        date_str (str): Raw date string from user or LLM.
+
+    Returns:
+        str: ISO date "YYYY-MM-DD", or "" if parsing fails.
+    """
+    import re as _re
+    if not date_str:
+        return ""
+    date_str = date_str.strip()
+    if _re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
+        return date_str
+    m = _re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})$", date_str)
+    if m:
+        month, day, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if year < 100:
+            year = 2000 + year
+        return f"{year:04d}-{month:02d}-{day:02d}"
+    return ""
+
+
+def _season_from_date(iso_date: str) -> str:
+    """Infer the NBA season string from an ISO date.
+
+    NBA seasons run October–June, so:
+        Jan–Sep of year Y → season started in Y-1  (e.g. 2026-01 → "2025-26")
+        Oct–Dec of year Y → season started in Y    (e.g. 2025-10 → "2025-26")
+
+    Args:
+        iso_date (str): ISO date string "YYYY-MM-DD".
+
+    Returns:
+        str: Season string e.g. "2025-26", or DEFAULT_SEASON if parsing fails.
+    """
+    try:
+        year  = int(iso_date[:4])
+        month = int(iso_date[5:7])
+        start = year if month >= 10 else year - 1
+        return f"{start}-{str(start + 1)[-2:]}"
+    except (ValueError, IndexError):
+        return DEFAULT_SEASON
+
+
 def get_player_last_n_games(
     player_id: int,
-    n: int,
+    n: int | None = None,
     season: str = DEFAULT_SEASON,
     season_type: str = "Regular Season",
+    order: str = "last",
+    date_from: str = "",
+    date_to: str = "",
 ) -> dict:
-    """Fetch the most recent N games for a player in any season.
+    """Fetch a slice of a player's game log with flexible filtering.
 
-    Fetches the full game log for the given season and season_type, sorts
-    newest-first, slices to N, and returns per-game rows plus averaged stats.
+    Fetches the full game log for the given season/type, optionally filters by
+    date range, sorts by the requested order, and slices to N games.
 
     Args:
         player_id (int): NBA player ID from search_player.
-        n (int): Number of most-recent games to return (e.g. 5, 10, 20).
-        season (str): Season string e.g. '2022-23'. Defaults to current season.
-        season_type (str): 'Regular Season' or 'Playoffs'. Defaults to 'Regular Season'.
+        n (int | None): Max games to return. None = all games in the date window.
+        season (str): Season string e.g. '2022-23'. When date_from/date_to are
+                      supplied without a season, the season is inferred from the dates.
+        season_type (str): 'Regular Season' or 'Playoffs'.
+        order (str): 'last' = most recent N games (default).
+                     'first' = earliest N games from the start of the season.
+        date_from (str): Return only games on or after this date.
+                         Accepts 'YYYY-MM-DD' or 'M/D/YY'.
+        date_to (str): Return only games on or before this date.
+                       Accepts 'YYYY-MM-DD' or 'M/D/YY'.
 
     Returns:
         dict: {
-            season, season_type, n_requested, n_returned,
+            season, season_type, order, n_requested, n_returned,
+            date_from, date_to, period_label,
             averages: {pts, reb, ast, stl, blk, tov, fg_pct, fg3_pct,
                        ft_pct, fga, fg3a, fta, gp, wins, losses},
-            game_log: list of _to_row dicts newest-first,
-            last_game_date: ISO date string of the most recent game or ""
+            game_log: list of _to_row dicts,
+            last_game_date: ISO date of the chronologically last game returned
         }
     """
-    n = max(1, int(n))   # guard against float / zero input from LLM
+    # Normalise dates
+    date_from_iso = _parse_user_date(date_from)
+    date_to_iso   = _parse_user_date(date_to)
+
+    # Auto-infer season from dates when the caller didn't specify explicitly
+    if date_from_iso and season == DEFAULT_SEASON:
+        season = _season_from_date(date_from_iso)
+
+    n_int = max(1, int(n)) if n is not None else None  # guard float/zero from LLM
 
     empty = {
         "season":         season,
         "season_type":    season_type,
-        "n_requested":    n,
+        "order":          order,
+        "n_requested":    n_int,
         "n_returned":     0,
+        "date_from":      date_from_iso,
+        "date_to":        date_to_iso,
+        "period_label":   "",
         "averages":       {},
         "game_log":       [],
         "last_game_date": "",
@@ -1834,26 +1908,66 @@ def get_player_last_n_games(
         label = season_type.lower().replace(" season", "")
         return {**empty, "error": f"No {season} {label} games found for this player."}
 
-    # Sort newest-first using the ISO date helper so cross-month order is correct
+    # ── Date-range filter ─────────────────────────────────────────────────────
+    if date_from_iso or date_to_iso:
+        def _in_range(row: dict) -> bool:
+            game_date = _parse_date_sort(row.get("GAME_DATE", ""))
+            if date_from_iso and game_date < date_from_iso:
+                return False
+            if date_to_iso and game_date > date_to_iso:
+                return False
+            return True
+        raw_rows = [r for r in raw_rows if _in_range(r)]
+
+    # ── Sort: oldest-first for "first", newest-first for "last" ──────────────
+    oldest_first = (order == "first")
     raw_rows_sorted = sorted(
         raw_rows,
         key=lambda r: _parse_date_sort(r.get("GAME_DATE", "")),
-        reverse=True,
+        reverse=not oldest_first,
     )
 
-    sliced       = raw_rows_sorted[:n]
-    actual_n     = len(sliced)
-    last_date    = _parse_date_sort(sliced[0].get("GAME_DATE", "")) if sliced else ""
+    # ── Slice to N ────────────────────────────────────────────────────────────
+    sliced   = raw_rows_sorted[:n_int] if n_int is not None else raw_rows_sorted
+    actual_n = len(sliced)
+
+    # last_game_date = chronologically latest game regardless of sort order
+    all_dates   = [_parse_date_sort(r.get("GAME_DATE", "")) for r in sliced if r.get("GAME_DATE")]
+    last_date   = max(all_dates) if all_dates else ""
+    first_date  = min(all_dates) if all_dates else ""
+
     game_log_out = [_to_row(r) for r in sliced]
     averages_out = _avg(sliced)
+
+    # Human-readable label for the period shown
+    def _fmt_iso(d: str) -> str:
+        if not d:
+            return ""
+        try:
+            months = ["Jan","Feb","Mar","Apr","May","Jun",
+                      "Jul","Aug","Sep","Oct","Nov","Dec"]
+            return f"{months[int(d[5:7])-1]} {int(d[8:10])}, {d[:4]}"
+        except (ValueError, IndexError):
+            return d
+
+    if date_from_iso or date_to_iso:
+        period_label = f"{_fmt_iso(date_from_iso or first_date)} – {_fmt_iso(date_to_iso or last_date)}"
+    elif order == "first":
+        period_label = f"First {actual_n} games of {season}"
+    else:
+        period_label = f"Last {actual_n} games of {season}"
 
     return {
         "season":         season,
         "season_type":    season_type,
-        "n_requested":    n,
+        "order":          order,
+        "n_requested":    n_int,
         "n_returned":     actual_n,
+        "date_from":      date_from_iso,
+        "date_to":        date_to_iso,
+        "period_label":   period_label,
         "averages":       averages_out,
-        "game_log":       game_log_out,  # newest-first; frontend reverses for charts
+        "game_log":       game_log_out,
         "last_game_date": last_date,
     }
 

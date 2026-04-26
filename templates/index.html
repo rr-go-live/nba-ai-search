@@ -776,7 +776,7 @@ function renderVsTeam(d, c) {
   + insightHtml(d.insight)
   + toggleHtml
   + '<div class="stat-grid" id="sg"></div>'
-  + '<div class="donuts-row" id="donuts"></div>'
+  + '<div id="donuts"></div>'
   + '<div class="charts-row" id="charts-area"></div>'
   + '<div id="log-area"></div>';
 
@@ -863,7 +863,7 @@ function renderConditional(d, c) {
   +   '<div class="split-card"><div class="split-card-bar" style="background:rgba(255,255,255,.12)"></div>'
   +     '<div class="split-card-body"><div class="split-title dim">' + cmpLbl + '</div><div id="split-c"></div></div></div>'
   + '</div>'
-  + '<div class="donuts-row" id="donuts"></div>'
+  + '<div id="donuts"></div>'
   + '<div class="charts-row"><div class="chart-card full"><div class="chart-title">Stat comparison</div>'
   +   '<div class="chart-wrap"><canvas id="chart-cond-bar"></canvas></div></div></div>'
   + '<div id="log-area"></div>';
@@ -1060,7 +1060,7 @@ function renderH2H(d, c) {
     +   '<div class="chart-card full"><div class="chart-title">Head to Head &mdash; Key Stats</div>'
     +   '<div class="chart-wrap"><canvas id="chart-h2h"></canvas></div></div>'
     + '</div>'
-    + '<div class="donuts-row" id="donuts"></div>'
+    + '<div id="donuts"></div>'
     + recordHtml
     + '<div id="log-area"></div>';
 
@@ -1282,7 +1282,7 @@ function renderCareer(d, c) {
         + '</div></div>'
       : '')
   + '<div class="stat-grid" id="sg"></div>'
-  + '<div class="donuts-row" id="donuts"></div>'
+  + '<div id="donuts"></div>'
   + '<div id="career-chart-area"></div>'
   + '<div id="career-high-area"></div>'
   + '<div id="log-area"></div>';
@@ -1611,20 +1611,20 @@ function buildDonuts(containerId, avgA, avgB, labelA, labelB, colA, colB) {
     */
     var r = 40;
     var circ = 2 * Math.PI * r;
-    return '<div style="display:flex;flex-direction:column;align-items:center;gap:8px">'
-      + '<svg id="' + id + '" width="100" height="100" viewBox="0 0 100 100">'
-      + '<circle cx="50" cy="50" r="' + r + '" fill="none" stroke="var(--border)" stroke-width="8"/>'
+    return '<div style="display:flex;flex-direction:column;align-items:center;gap:10px">'
+      + '<svg id="' + id + '" viewBox="0 0 100 100" style="width:100%;max-width:160px;height:auto">'
+      + '<circle cx="50" cy="50" r="' + r + '" fill="none" stroke="var(--border)" stroke-width="7"/>'
       + '<circle cx="50" cy="50" r="' + r + '" fill="none"'
-      + ' stroke="' + color + '" stroke-width="8" stroke-linecap="round"'
+      + ' stroke="' + color + '" stroke-width="7" stroke-linecap="round"'
       + ' stroke-dasharray="' + circ.toFixed(2) + '"'
       + ' stroke-dashoffset="' + circ.toFixed(2) + '"'
       + ' transform="rotate(-90 50 50)"'
-      + ' style="transition:stroke-dashoffset 1s ease;"/>'
+      + ' style="transition:stroke-dashoffset 1.1s cubic-bezier(.4,0,.2,1);"/>'
       + '<text x="50" y="50" text-anchor="middle" dominant-baseline="central"'
-      + ' font-family="\'Barlow Condensed\',sans-serif" font-size="16" font-weight="700"'
+      + ' font-family="\'Barlow Condensed\',sans-serif" font-size="17" font-weight="700"'
       + ' fill="var(--text)">' + pct.toFixed(1) + '%</text>'
       + '</svg>'
-      + '<span style="font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)">' + label + '</span>'
+      + '<span style="font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);text-align:center">' + label + '</span>'
       + '</div>';
   }
 
@@ -1632,26 +1632,31 @@ function buildDonuts(containerId, avgA, avgB, labelA, labelB, colA, colB) {
   var fg3A = parseFloat(avgA.fg3_pct || 0);
   var ftA  = parseFloat(avgA.ft_pct  || 0);
 
-  var html = '<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:28px;padding:10px 0">';
+  var innerHtml;
   if (avgB) {
-    // Two-player mode: show both players side by side per stat
+    // Two-player mode: 6 donuts in a 3×2 grid (stat columns, player rows)
     var fgB  = parseFloat(avgB.fg_pct  || 0);
     var fg3B = parseFloat(avgB.fg3_pct || 0);
     var ftB  = parseFloat(avgB.ft_pct  || 0);
-    html += donutSvg(fgA,  colA, (labelA || 'Player 1') + ' FG%',  'fg-donut-a');
-    html += donutSvg(fgB,  colB, (labelB || 'Player 2') + ' FG%',  'fg-donut-b');
-    html += donutSvg(fg3A, colA, (labelA || 'Player 1') + ' 3P%',  'fg3-donut-a');
-    html += donutSvg(fg3B, colB, (labelB || 'Player 2') + ' 3P%',  'fg3-donut-b');
-    html += donutSvg(ftA,  colA, (labelA || 'Player 1') + ' FT%',  'ft-donut-a');
-    html += donutSvg(ftB,  colB, (labelB || 'Player 2') + ' FT%',  'ft-donut-b');
+    innerHtml = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px">'
+      + donutSvg(fgA,  colA, (labelA || 'Player 1') + ' FG%',  'fg-donut-a')
+      + donutSvg(fg3A, colA, (labelA || 'Player 1') + ' 3P%',  'fg3-donut-a')
+      + donutSvg(ftA,  colA, (labelA || 'Player 1') + ' FT%',  'ft-donut-a')
+      + donutSvg(fgB,  colB, (labelB || 'Player 2') + ' FG%',  'fg-donut-b')
+      + donutSvg(fg3B, colB, (labelB || 'Player 2') + ' 3P%',  'fg3-donut-b')
+      + donutSvg(ftB,  colB, (labelB || 'Player 2') + ' FT%',  'ft-donut-b')
+      + '</div>';
   } else {
-    html += donutSvg(fgA,  colA, 'FG%',  'fg-donut');
-    html += donutSvg(fg3A, colA, '3P%',  'fg3-donut');
-    html += donutSvg(ftA,  colA, 'FT%',  'ft-donut');
+    // Single-player mode: 3 donuts evenly spaced in one row
+    innerHtml = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px">'
+      + donutSvg(fgA,  colA, 'FG%',  'fg-donut')
+      + donutSvg(fg3A, colA, '3P%',  'fg3-donut')
+      + donutSvg(ftA,  colA, 'FT%',  'ft-donut')
+      + '</div>';
   }
-  html += '</div>';
 
-  el.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">' + html + '</div>';
+  el.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);'
+    + 'border-radius:var(--radius);padding:24px 28px;margin-bottom:28px">' + innerHtml + '</div>';
 
   // Animate: after DOM settles, set stroke-dashoffset to target value
   requestAnimationFrame(function() {

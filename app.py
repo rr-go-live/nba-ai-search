@@ -24,9 +24,10 @@ import atexit
 import json
 import logging
 import os
+import socket
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -42,7 +43,7 @@ PRICE_INPUT_PER_M  = 0.075   # $0.075 / 1M input tokens
 PRICE_OUTPUT_PER_M = 0.30    # $0.30  / 1M output tokens
 
 # ── Session usage store ───────────────────────────────────────────────────────
-SESSION_START    = datetime.utcnow()
+SESSION_START    = datetime.now(timezone.utc)
 SESSION_START_ISO = SESSION_START.isoformat()
 
 # usage_data/ folder — one JSON file per server session
@@ -71,7 +72,7 @@ def _write_json():
     with USAGE_LOCK:
         queries   = dict(QUERY_MAP)
 
-    now          = datetime.utcnow()
+    now          = datetime.now(timezone.utc)
     elapsed      = round((now - SESSION_START).total_seconds(), 2)
     total_calls  = sum(q["api_calls"]     for q in queries.values())
     total_cost   = sum(q["query_cost_usd"] for q in queries.values())
@@ -109,7 +110,7 @@ def _record_usage(query: str, usage: dict):
     in_cost, out_cost = _compute_cost(input_tok, output_tok)
 
     entry = {
-        "timestamp":       datetime.utcnow().isoformat(),
+        "timestamp":       datetime.now(timezone.utc).isoformat(),
         "api_calls":       api_calls,
         "input_tokens":    input_tok,
         "output_tokens":   output_tok,
@@ -160,7 +161,7 @@ def _make_job(query: str) -> str:
         "events":   [],
         "result":   None,
         "error":    None,
-        "created":  datetime.utcnow().isoformat(),
+        "created":  datetime.now(timezone.utc).isoformat(),
         "lock":     threading.Lock(),
     }
     return job_id
@@ -340,7 +341,7 @@ def usage_summary():
     with USAGE_LOCK:
         queries = dict(QUERY_MAP)
 
-    now         = datetime.utcnow()
+    now         = datetime.now(timezone.utc)
     elapsed     = round((now - SESSION_START).total_seconds(), 2)
     total_calls = sum(q["api_calls"]      for q in queries.values())
     total_in    = sum(q["input_tokens"]   for q in queries.values())
@@ -366,6 +367,50 @@ def usage_summary():
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+def find_available_port(preferred_port: int, max_attempts: int = 10) -> int:
+    """
+    find_available_port
+    -------------------
+    Returns the first open TCP port starting from preferred_port.
+
+    Tries each port in the range [preferred_port, preferred_port + max_attempts).
+    Uses a quick socket bind to check availability — no actual server is started.
+
+    Args:
+        preferred_port (int): The port to try first (e.g. 5000 or value of PORT env var).
+        max_attempts   (int): How many consecutive ports to probe before giving up.
+
+    Returns:
+        int: The first port that is free.
+
+    Raises:
+        OSError: If none of the probed ports are available.
+    """
+    for offset in range(max_attempts):
+        port = preferred_port + offset
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            # SO_REUSEADDR lets us test a port even if it's in TIME_WAIT state.
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                probe.bind(("", port))
+                return port          # bind succeeded → port is free
+            except OSError:
+                continue             # port is occupied → try next one
+
+    raise OSError(
+        f"No available port found in range {preferred_port}–{preferred_port + max_attempts - 1}. "
+        "Stop some services and retry."
+    )
+
+
 if __name__ == "__main__":
-    logger.info(f"NBA Stats Explorer → http://localhost:{FLASK_PORT}")
-    app.run(host=FLASK_HOST, port=FLASK_PORT, debug=False, threaded=True)
+    port = find_available_port(FLASK_PORT)
+
+    if port != FLASK_PORT:
+        logger.warning(
+            f"Port {FLASK_PORT} is in use — using port {port} instead. "
+            f"(Set PORT={port} to make this the default.)"
+        )
+
+    logger.info(f"NBA Stats Explorer → http://localhost:{port}")
+    app.run(host=FLASK_HOST, port=port, debug=False, threaded=True)

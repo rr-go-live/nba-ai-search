@@ -146,6 +146,35 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "get_last_n_games",
+        "description": (
+            "Game-by-game stats for a slice of a player's game log.\n"
+            "Supports: most recent N games, first N games of a season, or all games in a date range.\n\n"
+            "Use for:\n"
+            "  'LeBron last 10 games'                → order='last', n=10\n"
+            "  'Curry first 10 games of 2022-23'     → order='first', n=10, season='2022-23'\n"
+            "  'Giannis games between 1/1/26-3/1/26' → date_from='1/1/26', date_to='3/1/26'\n"
+            "  'Tatum last 5 playoff games 2024'      → order='last', n=5, season='2023-24', season_type='Playoffs'\n\n"
+            "Defaults to the current season (2025-26) when no season is specified. "
+            "Supports any historical season and both Regular Season and Playoffs. "
+            "When date_from/date_to are provided, season is auto-inferred from the dates. "
+            "Returns per-game averages over the returned games + a full game log."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_id":   {"type": "integer", "description": "NBA player ID"},
+                "n":           {"type": "integer", "description": "Number of games to return. Can be omitted when using date_from/date_to to return all games in the window."},
+                "season":      {"type": "string",  "description": "Season e.g. '2022-23'. Defaults to current season (2025-26) when omitted. Auto-inferred from date_from when dates are provided."},
+                "season_type": {"type": "string",  "description": "'Regular Season' (default) or 'Playoffs'"},
+                "order":       {"type": "string",  "description": "'last' (default) = most recent N games. 'first' = earliest N games from the season start."},
+                "date_from":   {"type": "string",  "description": "Return only games on or after this date. Accepts 'YYYY-MM-DD' or 'M/D/YY' (e.g. '1/1/26')."},
+                "date_to":     {"type": "string",  "description": "Return only games on or before this date. Same format as date_from."},
+            },
+            "required": ["player_id"],
+        },
+    },
+    {
         "name": "get_multi_player_stats",
         "description": (
             "Compare 2–6 players side by side, each with their own season range and type.\n\n"
@@ -277,6 +306,21 @@ def execute_tool(tool_name: str, tool_input: dict) -> dict:
             tool_input["player_id"],
             season_from = tool_input.get("season_from"),
             season_to   = tool_input.get("season_to"),
+        )
+
+    elif tool_name == "get_last_n_games":
+        # n is optional when a date range is supplied — pass None to return all
+        # games in the window rather than a hard-capped 10.
+        raw_n = tool_input.get("n")
+        n_val = int(raw_n) if raw_n is not None else None
+        return nba.get_player_last_n_games(
+            player_id   = tool_input["player_id"],
+            n           = n_val,
+            season      = tool_input.get("season",      nba.DEFAULT_SEASON),
+            season_type = tool_input.get("season_type", "Regular Season"),
+            order       = tool_input.get("order",       "last"),
+            date_from   = tool_input.get("date_from",   ""),
+            date_to     = tool_input.get("date_to",     ""),
         )
 
     elif tool_name == "get_multi_player_stats":

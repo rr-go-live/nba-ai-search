@@ -34,7 +34,6 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .logo .mind { color: var(--accent); }
 .logo-dot { display: inline-block; width: 8px; height: 8px; background: var(--accent); border-radius: 50%; margin-left: 4px; animation: pulse-dot 2s ease-in-out infinite; }
 @keyframes pulse-dot { 0%,100% { transform: scale(1); } 50% { transform: scale(1.4); } }
-@keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 @keyframes donut-fill { from { stroke-dashoffset: var(--circumference); } to { stroke-dashoffset: var(--target-offset); } }
 @keyframes glow-pulse { 0%,100% { box-shadow: 0 0 20px rgba(212,245,66,.2); } 50% { box-shadow: 0 0 40px rgba(212,245,66,.4); } }
 .header-tag { font-size: .65rem; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; border: 1px solid var(--border); padding: 4px 10px; border-radius: 20px; }
@@ -220,26 +219,6 @@ tbody td { padding: 8px 10px; white-space: nowrap; transition: font-size .15s ea
 </style>
 </head>
 <body>
-<div id="trending-ticker" style="width:100%;overflow:hidden;border-bottom:1px solid var(--border);background:rgba(255,255,255,.03);padding:8px 0">
-  <div id="ticker-inner" style="display:flex;white-space:nowrap;animation:ticker-scroll 35s linear infinite">
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🔥 LeBron James — 19.9 PPG in last 10 games</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">📊 Luka Doncic averaging triple-double in last 10 games</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🏀 Celtics — 12-game win streak, longest since 2018</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">⭐ Victor Wembanyama — 4.8 BPG in April</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">💥 Shai Gilgeous-Alexander — 35.2 PPG in clutch situations</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">📈 Nikola Jokic — 15th triple-double of the season</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🎯 Stephen Curry — 43.2% from three this season</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🔥 Jayson Tatum — 12 straight 25+ point games</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🔥 LeBron James — 19.9 PPG in last 10 games</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">📊 Luka Doncic averaging triple-double in last 10 games</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🏀 Celtics — 12-game win streak, longest since 2018</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">⭐ Victor Wembanyama — 4.8 BPG in April</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">💥 Shai Gilgeous-Alexander — 35.2 PPG in clutch situations</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">📈 Nikola Jokic — 15th triple-double of the season</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🎯 Stephen Curry — 43.2% from three this season</span>
-    <span style="margin:0 40px;font-size:.75rem;color:var(--muted)">🔥 Jayson Tatum — 12 straight 25+ point games</span>
-  </div>
-</div>
 <div class="app">
 
 <header>

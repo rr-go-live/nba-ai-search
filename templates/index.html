@@ -1003,14 +1003,9 @@ function renderLastNGames(d, c) {
   c.innerHTML = playerHeaderHtml(player, null, [nMeta, snMeta, dateMeta])
     + insightHtml(d.insight)
     + '<div id="ln-stat-cards" style="margin:18px 0 6px"></div>'
-    + '<div style="margin:20px 0 8px">'
-    +   '<div class="section-title">Last ' + n + ' Games — PTS / REB / AST</div>'
-    +   '<div style="position:relative;height:220px;margin-top:10px"><canvas id="ln-chart"></canvas></div>'
-    + '</div>'
     + '<div id="ln-log" style="margin-top:20px"></div>';
 
   buildStatCards('ln-stat-cards', avg);
-  buildLastNChart('ln-chart', log, player);
   buildGameLog('ln-log', log, null);
 }
 
@@ -2028,9 +2023,24 @@ window.switchLog = function(side) {
 
 function gameLogHtml(rows, sortCol, sortDir) {
   if (!rows || !rows.length) return '<p style="color:var(--muted);padding:16px 0">No games.</p>';
-  var totalPages = Math.ceil(rows.length / LOG_PAGE_SIZE);
+
+  // Apply column sort before pagination
+  var numericCols = { pts:1, reb:1, ast:1, stl:1, blk:1, tov:1,
+                      fg_pct:1, fg3_pct:1, ft_pct:1, plus_minus:1 };
+  var sorted = rows;
+  if (sortCol) {
+    sorted = rows.slice().sort(function(a, b) {
+      var av = numericCols[sortCol] ? (parseFloat(a[sortCol]) || 0) : (a[sortCol] || '');
+      var bv = numericCols[sortCol] ? (parseFloat(b[sortCol]) || 0) : (b[sortCol] || '');
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }
+
+  var totalPages = Math.ceil(sorted.length / LOG_PAGE_SIZE);
   var page = Math.max(0, Math.min(logPage, totalPages - 1));
-  var pageRows = rows.slice(page * LOG_PAGE_SIZE, (page + 1) * LOG_PAGE_SIZE);
+  var pageRows = sorted.slice(page * LOG_PAGE_SIZE, (page + 1) * LOG_PAGE_SIZE);
   var tbody = '';
   pageRows.forEach(function(g) {
     var pm = parseInt(g.plus_minus || 0);
@@ -2060,7 +2070,9 @@ function gameLogHtml(rows, sortCol, sortDir) {
   function th(label, col) {
     var arrow = '';
     if (sortCol === col) arrow = sortDir === 'asc' ? ' ↑' : ' ↓';
-    var style = sortCol === col ? ' style="color:var(--tp)"' : '';
+    var active = sortCol === col;
+    var style = ' style="cursor:pointer;user-select:none'
+      + (active ? ';color:var(--tp)' : '') + '"';
     return '<th onclick="sortGameLog(\'' + col + '\')"' + style + '>' + label + arrow + '</th>';
   }
 
@@ -2086,10 +2098,10 @@ function gameLogHtml(rows, sortCol, sortDir) {
   var paginationHtml = '';
   if (totalPages > 1) {
     var start = page * LOG_PAGE_SIZE + 1;
-    var end   = Math.min((page + 1) * LOG_PAGE_SIZE, rows.length);
+    var end   = Math.min((page + 1) * LOG_PAGE_SIZE, sorted.length);
     paginationHtml = '<div class="log-pagination">'
       + '<button ' + (page === 0 ? 'disabled' : 'onclick="goLogPage(' + (page - 1) + ')"') + '>← Prev</button>'
-      + '<span>' + start + '–' + end + ' of ' + rows.length + ' games · page ' + (page + 1) + ' / ' + totalPages + '</span>'
+      + '<span>' + start + '–' + end + ' of ' + sorted.length + ' games · page ' + (page + 1) + ' / ' + totalPages + '</span>'
       + '<button ' + (page >= totalPages - 1 ? 'disabled' : 'onclick="goLogPage(' + (page + 1) + ')"') + '>Next →</button>'
       + '</div>';
   }

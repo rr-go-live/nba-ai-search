@@ -62,6 +62,15 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .step.hi { color: var(--text); }
 @keyframes step-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
 
+/* Hoop loader */
+#hoop-loader { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 28px 0 20px; }
+.hoop-ball { font-size: 2.2rem; display: inline-block; animation: bounce-ball .55s ease-in-out infinite alternate; }
+@keyframes bounce-ball {
+  from { transform: translateY(0px) rotate(-10deg); }
+  to   { transform: translateY(-22px) rotate(20deg); }
+}
+#hoop-phrase { font-family: 'Barlow Condensed', sans-serif; font-size: 1.05rem; font-weight: 600; letter-spacing: .03em; color: var(--text); text-align: center; transition: opacity .35s ease; min-height: 1.4em; }
+
 /* Results */
 #results { display: none; }
 #results.visible { display: block; animation: fade-up .4s ease both; }
@@ -257,7 +266,10 @@ tbody td { padding: 8px 10px; white-space: nowrap; transition: font-size .15s ea
 </section>
 
 <div id="progress-panel">
-  <div id="stepper-row" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:32px 0 20px"></div>
+  <div id="hoop-loader">
+    <div class="hoop-ball">🏀</div>
+    <div id="hoop-phrase"></div>
+  </div>
   <div id="progress-steps"></div>
 </div>
 
@@ -430,47 +442,80 @@ function addStep(icon, txt, hi) {
   el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function updateStepper(stepIdx) {
-  /*
-  updateStepper
-  -------------
-  Renders the 3-step circular progress stepper UI showing which step is current.
-  Steps: 0=Parsing query, 1=Fetching stats, 2=Analyzing.
-  Completed steps show a checkmark; the current step is outlined in accent color.
+/* ── Hoop loader ──────────────────────────────────────────────────────────── */
+var HOOP_PHRASES = [
+  "From downtown! 🏀",
+  "Crossover… defender COOKED 💀",
+  "Hesitation move…",
+  "Splash! Nothing but net 🌊",
+  "Between the legs!",
+  "Euro step!",
+  "Pump fake… AND ONE! 🙌",
+  "Breaking ankles in traffic…",
+  "Shimmy! 🕺",
+  "Alley-oop! 🚀",
+  "Stepback three… BANG!",
+  "In the zone rn fr fr 🔥",
+  "Tweener pass! 🏀",
+  "Hesi! Got 'em…",
+  "Spin move to the rack!",
+  "Put 'em on a poster 😤",
+  "Cooking the defense…",
+  "Pull-up mid… off the glass!",
+  "No look pass! 👀",
+  "Back-to-back buckets!",
+  "Fadeaway… DRILLED IT! 💥",
+  "Getting buckets quietly 🤫",
+  "Floater over the big… GOOD!",
+  "They fouled him AGAIN 😭",
+  "Triple-double loading… 📊",
+];
 
-  Args:
-    stepIdx (number): Index of the currently active step (0, 1, or 2)
+var _hoopTimer   = null;
+var _hoopPhrIdx  = 0;
+
+function startHoopAnimation() {
+  /*
+  startHoopAnimation
+  ------------------
+  Starts the basketball lingo loading animation. Picks a random starting phrase
+  then cycles through HOOP_PHRASES every 1.8 s with a smooth opacity fade.
+  Safe to call multiple times — won't start a second interval if already running.
 
   Returns: void
   */
-  var labels = ['Parsing query', 'Fetching stats', 'Analyzing'];
-  var html = '';
-  labels.forEach(function(lbl, i) {
-    var isDone    = i < stepIdx;
-    var isCurrent = i === stepIdx;
-    var circStyle = isDone
-      ? 'background:var(--tp);border-color:var(--tp);color:#000'
-      : isCurrent
-        ? 'border-color:var(--tp);color:var(--tp)'
-        : 'border-color:var(--border);color:var(--muted)';
-    html += '<div style="display:flex;align-items:center;gap:8px">';
-    html += '<div style="width:32px;height:32px;border-radius:50%;border:2px solid;'
-      + 'display:flex;align-items:center;justify-content:center;'
-      + 'font-family:\'Barlow Condensed\',sans-serif;font-size:.8rem;font-weight:700;'
-      + 'transition:all .3s;' + circStyle + '">'
-      + (isDone ? '✓' : (i + 1)) + '</div>';
-    html += '<span style="font-size:.75rem;color:'
-      + (isDone ? 'var(--tp)' : (isCurrent ? 'var(--text)' : 'var(--muted)'))
-      + ';display:none" class="step-label">' + lbl + '</span>';
-    if (i < labels.length - 1) {
-      html += '<div style="width:40px;height:2px;background:'
-        + (isDone ? 'var(--tp)' : 'var(--border)')
-        + ';margin:0 4px;transition:background .3s"></div>';
-    }
-    html += '</div>';
-  });
-  var row = document.getElementById('stepper-row');
-  if (row) row.innerHTML = html;
+  if (_hoopTimer) return;
+  _hoopPhrIdx = Math.floor(Math.random() * HOOP_PHRASES.length);
+  var phraseEl = document.getElementById('hoop-phrase');
+  if (phraseEl) {
+    phraseEl.textContent = HOOP_PHRASES[_hoopPhrIdx];
+    phraseEl.style.opacity = '1';
+  }
+  _hoopTimer = setInterval(function() {
+    var el = document.getElementById('hoop-phrase');
+    if (!el) return;
+    el.style.opacity = '0';
+    setTimeout(function() {
+      _hoopPhrIdx = (_hoopPhrIdx + 1) % HOOP_PHRASES.length;
+      el.textContent = HOOP_PHRASES[_hoopPhrIdx];
+      el.style.opacity = '1';
+    }, 380);
+  }, 1800);
+}
+
+function stopHoopAnimation() {
+  /*
+  stopHoopAnimation
+  -----------------
+  Stops the basketball lingo loading animation and clears the interval.
+  Safe to call even if the animation is not running.
+
+  Returns: void
+  */
+  if (_hoopTimer) {
+    clearInterval(_hoopTimer);
+    _hoopTimer = null;
+  }
 }
 
 function fmt(v, d) {
@@ -573,7 +618,7 @@ function submitQuery() {
   document.getElementById('results').classList.remove('visible');
   document.getElementById('progress-panel').classList.add('active');
   document.documentElement.style.setProperty('--tp', '#d4f542');
-  updateStepper(0);
+  startHoopAnimation();
 
   fetch('/api/query', {
     method: 'POST',
@@ -599,9 +644,9 @@ function listenStream(jobId) {
 }
 
 function handleEvent(type, data) {
-  if (type === 'thinking' || type === 'message') { updateStepper(0); addStep('>', data, true); }
-  else if (type === 'tool_start') { updateStepper(1); addStep('*', data, true); }
-  else if (type === 'tool_result') { updateStepper(2); addStep('+', data, false); }
+  if (type === 'thinking' || type === 'message') { addStep('>', data, true); }
+  else if (type === 'tool_start') { addStep('*', data, true); }
+  else if (type === 'tool_result') { addStep('+', data, false); }
   else if (type === 'result') {
     try {
       var parsed = JSON.parse(data);
@@ -634,6 +679,7 @@ function handleEvent(type, data) {
 
 // ─── Render router ───────────────────────────────────────────────────────────
 function renderResults(d) {
+  stopHoopAnimation();
   var c = document.getElementById('results');
   c.innerHTML = '';
   document.getElementById('progress-panel').classList.remove('active');

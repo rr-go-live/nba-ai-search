@@ -25,7 +25,7 @@ from typing import Callable
 from google import genai
 from google.genai import types
 
-from config import GEMINI_MODEL, MAX_AGENT_ITERS, AGENT_MAX_TOKENS
+from config import GEMINI_MODEL, MAX_AGENT_ITERS, AGENT_MAX_TOKENS, YEAR_TO_SEASON, DEFAULT_SEASON
 from tools import TOOL_DEFINITIONS, execute_tool
 import nba_stats_client as nba
 
@@ -153,14 +153,25 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
     most 3-pointers made / three-point leaders                   → stat="fg3m"
     best efficiency / PER-like                                   → stat="eff"
 
-▸ LAST N GAMES (recent form, current season):
-  "LeBron last 10 games" / "Curry recent form" / "how has Giannis been playing"
-  "Tatum last 5 games stats" / "what has Embiid done lately"
+▸ LAST N GAMES (recent form OR any specific past season):
+  *** get_last_n_games WORKS FOR ANY SEASON — past seasons are fully supported. ***
+  *** NEVER mark a past-season last-N-games query as invalid. ***
+
+  Examples (ALL valid — always use get_last_n_games, never output invalid):
+    "LeBron last 10 games"              → season="2025-26" (default)
+    "Curry last 10 games in 2022-23"    → season="2022-23"
+    "Giannis last 5 games in 2021"      → season="2020-21"
+    "LeBron last 5 playoff games 2020"  → season="2019-20", season_type="Playoffs"
+    "Tatum last 10 games this season"   → season="2025-26"
+    "KD last 5 games 2023-24"           → season="2023-24"
+
   → Step 1: search_player to get player_id
-  → Step 2: get_last_n_games(player_id, n)
+  → Step 2: get_last_n_games(player_id, n, season, season_type)
   → Output type: "last_n_games"
   Default n=10 when the user doesn't specify a number.
-  Always uses the current season (2025-26).
+  Default season="2025-26" only when the user does NOT mention any season or year.
+  Pass season_type="Playoffs" when the user asks about playoff games.
+  Always pass the exact season the user named — never assume current.
 
 ▸ H2H / Head-to-Head (BOTH PLAYERS ACTIVE):
   "LeBron vs Curry H2H" / "LeBron head to head with Curry" / "when they match up"
@@ -233,6 +244,11 @@ CRITICAL MULTI-PLAYER CHECK — evaluate this FIRST before any other rule:
   • Future season not yet played:
       "Curry 2040 Playoffs", "LeBron 2031-32 stats"
       → reason: "The [YEAR] season hasn't happened yet. Curry's last active season was [YEAR]."
+
+  *** NEVER MARK THESE AS INVALID — they are always valid: ***
+  • "last N games in [past season]" — past seasons are fully supported by get_last_n_games.
+      "Curry last 10 games in 2022-23" → VALID → use get_last_n_games(season="2022-23")
+      "LeBron last 5 games 2020"       → VALID → use get_last_n_games(season="2019-20")
   • Non-NBA athlete or fictional entity:
       "Patrick Mahomes career stats", "LeBron vs Chad Basketball"
       → reason: "[Name] is not an NBA player."
@@ -634,7 +650,8 @@ COMPARE TITLE FORMAT:
   "player": { ...player object... },
   "n_requested": 10,
   "n_returned": 10,
-  "season": "2025-26",
+  "season": "2025-26",          // use whatever season the user asked for
+  "season_type": "Regular Season",
   "last_game_date": "2026-04-10",
   "averages": {
     "gp": 10, "pts": 0.0, "reb": 0.0, "ast": 0.0, "stl": 0.0, "blk": 0.0,
@@ -693,6 +710,78 @@ GEMINI_TOOLS = [
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Pre-flight interceptor for last-N-games queries
+# ─────────────────────────────────────────────────────────────────────────────
+# Gemini has a strong training-data prior that 'last N games' only works for
+# the current season, and it ignores system-prompt instructions to the contrary.
+# To guarantee past-season queries work, we detect the pattern here and bypass
+# the LLM routing entirely, calling the NBA API directly.
+
+# Regex: "<player> last <N> [playoff] games [in/during/of] <year/season>"
+# Matches "Curry last 10 games in 2022-23" and "LeBron last 5 playoff games 2020"
+_LAST_N_RE = re.compile(
+    r'^(.+?)\s+last\s+(\d+)\s+(playoff\s+)?games?'   # player + N + optional "playoff"
+    r'(?:\s+(?:in|during|of(?:\s+the)?|from))?\s*'   # optional preposition
+    r'((?:19|20)\d{2}(?:-\d{2})?)',                   # year or season string
+    re.IGNORECASE,
+)
+
+
+def _parse_last_n_query(query: str) -> dict | None:
+    """
+    _parse_last_n_query
+    -------------------
+    Detect and parse a 'last N games in <past season>' query pattern.
+
+    Matches queries like:
+        "Curry last 10 games in 2022-23"
+        "LeBron last 5 playoff games 2020"
+        "Giannis last 5 games during 2021-22"
+
+    Note on bare year resolution: a bare year like "2020" is treated as a season
+    start year → "2020-21". For unambiguous results, users should use the full
+    season string (e.g. "2019-20"). This mirrors the YEAR_TO_SEASON convention
+    used throughout the app.
+
+    Does NOT match queries for the current season (those go through Gemini normally).
+
+    Args:
+        query (str): Raw user query string.
+
+    Returns:
+        dict | None: Parsed params {"player_name", "n", "season", "season_type"}
+                     or None if the pattern didn't match.
+    """
+    m = _LAST_N_RE.search(query)
+    if not m:
+        return None
+
+    player_name = m.group(1).strip()
+    n           = int(m.group(2))
+    is_playoff  = bool(m.group(3))
+    year_str    = m.group(4)
+
+    # Normalise year/season string using the config mapping
+    season = YEAR_TO_SEASON.get(year_str)
+    if not season:
+        return None
+
+    # Current season queries are fine for Gemini to handle — no interception needed
+    if season == DEFAULT_SEASON:
+        return None
+
+    if not player_name:
+        return None
+
+    return {
+        "player_name": player_name,
+        "n":           n,
+        "season":      season,
+        "season_type": "Playoffs" if is_playoff else "Regular Season",
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Agent
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -702,7 +791,136 @@ class NBAStatsAgent:
         self.client = genai.Client()
         logger.info(f"NBAStatsAgent initialized ({GEMINI_MODEL})")
 
+    def _run_last_n_direct(
+        self,
+        params: dict,
+        progress_cb: Callable[[str, str], None],
+    ) -> dict:
+        """
+        _run_last_n_direct
+        ------------------
+        Handle a 'last N games in <past season>' query without Gemini routing.
+
+        Calls search_player and get_player_last_n_games directly from Python,
+        then returns a result dict in the same structure as the Gemini-produced
+        last_n_games output so the frontend renders identically.
+
+        Args:
+            params (dict): Parsed query params from _parse_last_n_query —
+                           {"player_name", "n", "season", "season_type"}.
+            progress_cb:   SSE progress callback (event_type, message).
+
+        Returns:
+            dict | None: {"success": bool, "result": dict, "narrative": str, "usage": dict},
+                         or None if the player name was too ambiguous (signals run() to
+                         fall through to the Gemini loop for proper disambiguation).
+        """
+        player_name = params["player_name"]
+        n           = params["n"]
+        season      = params["season"]
+        season_type = params["season_type"]
+        label       = "Playoffs" if season_type == "Playoffs" else "Regular Season"
+
+        progress_cb("thinking", "Step 1: reasoning…")
+
+        # ── Step 1: resolve player ────────────────────────────────────────────
+        progress_cb("tool_start", f"🔍 Looking up: **{player_name}**")
+        player = nba.search_player(player_name)
+        if not player:
+            err = f"Player '{player_name}' not found."
+            progress_cb("error", err)
+            return {"success": False, "error": err}
+
+        info = nba.get_player_info(player["id"])
+        awards = nba.get_player_awards(player["id"])
+        progress_cb(
+            "tool_result",
+            f"✅ **{player['full_name']}** (#{info.get('jersey','?')}, {info.get('team','')})",
+        )
+
+        progress_cb("thinking", "Step 2: reasoning…")
+
+        # ── Step 2: fetch game log ────────────────────────────────────────────
+        progress_cb("tool_start", f"📅 Fetching last **{n} games** ({season} {label})…")
+        raw = nba.get_player_last_n_games(player["id"], n, season, season_type)
+
+        n_ret = raw.get("n_returned", 0)
+        pts   = (raw.get("averages") or {}).get("pts", 0)
+        log_label = " Playoffs" if season_type == "Playoffs" else ""
+        progress_cb("tool_result", f"✅ {n_ret} games ({season}{log_label}) — **{pts} PPG** average")
+
+        if raw.get("error") and not raw.get("game_log"):
+            # If the player resolved correctly but just has no games in this season,
+            # it's a real result. But if a bare name like "Curry" matched the wrong
+            # player (e.g. Dell Curry instead of Stephen Curry), n_returned will be
+            # 0 because the retired player has no games. Fall back to Gemini in that
+            # case so it can disambiguate the name properly from context.
+            if not player.get("is_active", True):
+                logger.info(
+                    f"[last-n-direct] inactive player '{player['full_name']}' returned "
+                    f"0 games for {season} — falling back to Gemini for name disambiguation."
+                )
+                return None   # signals run() to fall through to Gemini
+            err = raw["error"]
+            progress_cb("error", err)
+            return {"success": False, "error": err}
+
+        # ── Build result ──────────────────────────────────────────────────────
+        avgs = raw.get("averages") or {}
+        reb  = avgs.get("reb", 0)
+        ast  = avgs.get("ast", 0)
+
+        insight = (
+            f"{player['full_name']} averaged {pts} PPG, {reb} RPG, and {ast} APG "
+            f"in {n_ret} {season} {label.lower()} games."
+        )
+
+        result = {
+            "type":           "last_n_games",
+            "player": {
+                "name":        player["full_name"],
+                "player_id":   player["id"],
+                "team":        info.get("team", ""),
+                "team_abbr":   info.get("team_abbr", ""),
+                "position":    info.get("position", ""),
+                "headshot_url": info.get("headshot_url", nba.headshot_url(player["id"])),
+                "awards":      awards,
+            },
+            "season":         raw.get("season",      season),
+            "season_type":    raw.get("season_type", season_type),
+            "n_requested":    raw.get("n_requested", n),
+            "n_returned":     n_ret,
+            "last_game_date": raw.get("last_game_date", ""),
+            "averages":       avgs,
+            "game_log":       raw.get("game_log", []),
+            "insight":        insight,
+        }
+
+        logger.info(
+            f"[last-n-direct] {player['full_name']} last {n_ret} games "
+            f"{season} {season_type} — {pts} PPG"
+        )
+        return {
+            "success":   True,
+            "result":    result,
+            "narrative": "",
+            "usage":     {"input_tokens": 0, "output_tokens": 0, "api_calls": 0},
+        }
+
     def run(self, query: str, progress_cb: Callable[[str, str], None]) -> dict:
+        # Pre-flight: past-season 'last N games' queries bypass the Gemini router
+        # entirely. Gemini has a strong training-data prior that this feature only
+        # works for the current season, and it outputs a false "invalid" response
+        # even when the system prompt explicitly permits past seasons. Intercepting
+        # here ensures reliable results regardless of model behaviour.
+        last_n_params = _parse_last_n_query(query)
+        if last_n_params:
+            logger.info(f"[pre-flight] last-n-games intercepted: {last_n_params}")
+            direct_result = self._run_last_n_direct(last_n_params, progress_cb)
+            if direct_result is not None:
+                return direct_result
+            # None → player name was ambiguous; fall through to Gemini for resolution
+
         # Gemini uses a flat contents list: alternating user/model turns.
         # Tool results go in a "user" turn as function_response parts.
         contents: list = [
@@ -1128,11 +1346,12 @@ def _merge_raw_logs(result: dict, cache: dict) -> dict:
         ]
         if last_n_results:
             raw = last_n_results[-1]
-            if "game_log"   in raw: result["game_log"]   = raw["game_log"]
-            if "averages"   in raw: result["averages"]   = raw["averages"]
-            if "n_returned" in raw: result["n_returned"] = raw["n_returned"]
+            if "game_log"    in raw: result["game_log"]    = raw["game_log"]
+            if "averages"    in raw: result["averages"]    = raw["averages"]
+            if "n_returned"  in raw: result["n_returned"]  = raw["n_returned"]
             if "n_requested" in raw: result["n_requested"] = raw["n_requested"]
-            if "season"     in raw: result["season"]     = raw["season"]
+            if "season"      in raw: result["season"]      = raw["season"]
+            if "season_type" in raw: result["season_type"] = raw["season_type"]
             if raw.get("last_game_date"):
                 result["last_game_date"] = raw["last_game_date"]
 
@@ -1268,8 +1487,11 @@ def _describe_tool(name: str, inp: dict) -> str:
         rng = _season_range_label(players[0]) if players else ""
         return f"📊 Fetching stats for {n} player{'s' if n != 1 else ''}" + (f" · **{rng}**" if rng else "") + "…"
     if name == "get_last_n_games":
-        n = inp.get("n", 10)
-        return f"📅 Fetching last **{n} games** (2025-26 season)…"
+        n           = inp.get("n", 10)
+        season      = inp.get("season", "2025-26")
+        season_type = inp.get("season_type", "Regular Season")
+        label       = "Playoffs" if season_type == "Playoffs" else "Regular Season"
+        return f"📅 Fetching last **{n} games** ({season} {label})…"
     if name == "get_leaderboard":
         return f"🏆 Loading {inp.get('stat','pts').upper()} leaderboard ({inp.get('season','')})…"
     return f"🔧 {name}"
@@ -1297,9 +1519,12 @@ def _summarise(name: str, result: dict) -> str:
         p = len(result.get("playoff_seasons", []))
         return f"✅ {n} regular seasons, {p} playoff seasons"
     if name == "get_last_n_games":
-        n_ret = result.get("n_returned", 0)
-        pts   = (result.get("averages") or {}).get("pts", 0)
-        return f"✅ {n_ret} games — **{pts} PPG** average"
+        n_ret       = result.get("n_returned", 0)
+        pts         = (result.get("averages") or {}).get("pts", 0)
+        season      = result.get("season", "")
+        season_type = result.get("season_type", "Regular Season")
+        label       = " Playoffs" if season_type == "Playoffs" else ""
+        return f"✅ {n_ret} games ({season}{label}) — **{pts} PPG** average"
     return "✅ Done"
 
 

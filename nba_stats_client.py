@@ -1790,20 +1790,22 @@ def get_player_last_n_games(
     player_id: int,
     n: int,
     season: str = DEFAULT_SEASON,
+    season_type: str = "Regular Season",
 ) -> dict:
-    """Fetch the most recent N regular-season games for a player.
+    """Fetch the most recent N games for a player in any season.
 
-    Fetches the full current-season game log, sorts newest-first, slices to N,
-    and returns per-game rows plus averaged stats across those games.
+    Fetches the full game log for the given season and season_type, sorts
+    newest-first, slices to N, and returns per-game rows plus averaged stats.
 
     Args:
         player_id (int): NBA player ID from search_player.
         n (int): Number of most-recent games to return (e.g. 5, 10, 20).
-        season (str): Season string, defaults to current (2025-26).
+        season (str): Season string e.g. '2022-23'. Defaults to current season.
+        season_type (str): 'Regular Season' or 'Playoffs'. Defaults to 'Regular Season'.
 
     Returns:
         dict: {
-            season, n_requested, n_returned,
+            season, season_type, n_requested, n_returned,
             averages: {pts, reb, ast, stl, blk, tov, fg_pct, fg3_pct,
                        ft_pct, fga, fg3a, fta, gp, wins, losses},
             game_log: list of _to_row dicts newest-first,
@@ -1814,6 +1816,7 @@ def get_player_last_n_games(
 
     empty = {
         "season":         season,
+        "season_type":    season_type,
         "n_requested":    n,
         "n_returned":     0,
         "averages":       {},
@@ -1822,13 +1825,14 @@ def get_player_last_n_games(
     }
 
     try:
-        raw_rows = _game_log(player_id, season, "Regular Season")
+        raw_rows = _game_log(player_id, season, season_type)
     except Exception as exc:
         logger.warning(f"get_player_last_n_games {player_id}: {exc}")
         return {**empty, "error": str(exc)}
 
     if not raw_rows:
-        return {**empty, "error": f"No {season} regular-season games found."}
+        label = season_type.lower().replace(" season", "")
+        return {**empty, "error": f"No {season} {label} games found for this player."}
 
     # Sort newest-first using the ISO date helper so cross-month order is correct
     raw_rows_sorted = sorted(
@@ -1845,6 +1849,7 @@ def get_player_last_n_games(
 
     return {
         "season":         season,
+        "season_type":    season_type,
         "n_requested":    n,
         "n_returned":     actual_n,
         "averages":       averages_out,

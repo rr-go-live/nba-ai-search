@@ -148,17 +148,20 @@ TOOL_DEFINITIONS = [
     {
         "name": "get_last_n_games",
         "description": (
-            "Game-by-game stats for a player's most recent N games in the current season (2025-26).\n"
-            "Use for: 'LeBron last 10 games', 'Curry last 5 games stats', "
-            "'how has Giannis been playing recently', 'Tatum recent form'.\n"
-            "Always uses the current regular season (2025-26). "
+            "Game-by-game stats for a player's most recent N games in any season.\n"
+            "Use for: 'LeBron last 10 games', 'Curry last 5 games in 2022-23', "
+            "'how has Giannis been playing recently', 'Tatum last 5 playoff games 2024'.\n"
+            "Defaults to the current season (2025-26) when no season is specified. "
+            "Supports any historical season and both Regular Season and Playoffs. "
             "Returns per-game averages over those N games + a full game log."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "player_id": {"type": "integer", "description": "NBA player ID"},
-                "n":         {"type": "integer", "description": "Number of most recent games to return (e.g. 5, 10, 20)"},
+                "player_id":   {"type": "integer", "description": "NBA player ID"},
+                "n":           {"type": "integer", "description": "Number of most recent games to return (e.g. 5, 10, 20)"},
+                "season":      {"type": "string",  "description": "Season e.g. '2022-23'. Defaults to current season (2025-26) when omitted."},
+                "season_type": {"type": "string",  "description": "'Regular Season' (default) or 'Playoffs'"},
             },
             "required": ["player_id", "n"],
         },
@@ -299,8 +302,10 @@ def execute_tool(tool_name: str, tool_input: dict) -> dict:
 
     elif tool_name == "get_last_n_games":
         return nba.get_player_last_n_games(
-            player_id = tool_input["player_id"],
-            n         = int(tool_input.get("n", 10)),
+            player_id   = tool_input["player_id"],
+            n           = int(tool_input.get("n", 10)),
+            season      = tool_input.get("season",      nba.DEFAULT_SEASON),
+            season_type = tool_input.get("season_type", "Regular Season"),
         )
 
     elif tool_name == "get_multi_player_stats":

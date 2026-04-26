@@ -47,8 +47,10 @@ MAX_AGENT_ITERS  = 12
 AGENT_MAX_TOKENS = 16384
 
 # ── Flask ─────────────────────────────────────────────────────────────────────
+# PORT env var lets you override without touching code (e.g. PORT=8080 python3 app.py).
+# app.py will auto-increment from this value if the port is already in use.
 FLASK_HOST = "0.0.0.0"
-FLASK_PORT = 5000
+FLASK_PORT = int(__import__('os').environ.get('PORT', 5000))
 
 # ── Data limits ───────────────────────────────────────────────────────────────
 MAX_GAME_LOG_ROWS = 250    # rows returned to frontend in game log

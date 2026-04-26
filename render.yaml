@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: nba-ai-search
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    # SSE (Server-Sent Events) requires threaded workers so each streaming
+    # connection doesn't block other requests. gthread with 4 threads handles
+    # up to 4 concurrent SSE streams on the free-tier single dyno.
+    startCommand: gunicorn app:app --worker-class=gthread --workers=1 --threads=4 --timeout=120 --bind=0.0.0.0:$PORT
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false          # set this manually in the Render dashboard
+    autoDeploy: true

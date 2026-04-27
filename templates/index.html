@@ -56,11 +56,6 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 /* Progress */
 #progress-panel { display: none; margin-bottom: 28px; }
 #progress-panel.active { display: block; }
-.progress-title { font-family: 'Barlow Condensed', sans-serif; font-size: .7rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
-#progress-steps { display: flex; flex-direction: column; gap: 6px; padding: 0 0 16px; }
-.step { font-size: .78rem; color: var(--muted); display: flex; gap: 10px; animation: step-in .3s ease both; }
-.step.hi { color: var(--text); }
-@keyframes step-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
 
 /* Hoop loader */
 #hoop-loader { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 28px 0 20px; }
@@ -270,7 +265,7 @@ tbody td { padding: 8px 10px; white-space: nowrap; transition: font-size .15s ea
     <div class="hoop-ball">🏀</div>
     <div id="hoop-phrase"></div>
   </div>
-  <div id="progress-steps"></div>
+  <div id="invalid-msg"></div>
 </div>
 
 <div id="results"></div>
@@ -422,53 +417,51 @@ function setLoading(on) {
   document.getElementById('btn-spin').style.display = on ? '' : 'none';
 }
 
-function addStep(icon, txt, hi) {
-  /*
-  addStep
-  -------
-  Appends a progress step item to the progress steps list and scrolls it into view.
-
-  Args:
-    icon (string): Icon character or emoji to show on the left
-    txt (string): Text description of the step
-    hi (boolean): If true, applies the highlighted (active) step style
-
-  Returns: void
-  */
-  var el = document.createElement('div');
-  el.className = hi ? 'step hi' : 'step';
-  el.innerHTML = '<span>' + icon + '</span><span>' + txt + '</span>';
-  document.getElementById('progress-steps').appendChild(el);
-  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
 /* ── Hoop loader ──────────────────────────────────────────────────────────── */
 var HOOP_PHRASES = [
-  "From downtown! 🏀",
-  "Crossover… defender COOKED 💀",
-  "Hesitation move…",
-  "Splash! Nothing but net 🌊",
-  "Between the legs!",
-  "Euro step!",
+  // Mike Breen
+  "BANG! 💥",
+  "And it counts! BANG!",
+  // Kevin Harlan
+  "WITH NO REGARD FOR HUMAN LIFE! 😤",
+  "HE IS UNCONSCIOUS TONIGHT!",
+  "ARE YOU KIDDING ME?!",
+  // Mark Jackson
+  "Mama, there goes that man! 🙌",
+  "Hand down, man down.",
+  // Chick Hearn
+  "Slaaaaammmm DUNK! 🏀",
+  "No harm, no foul.",
+  // Stacey King
+  "DID YOU NOT GET THE MEMO?!",
+  "TURN THE SPRINKLER SYSTEM ON — HE'S ON FIRE! 🔥💦",
+  "GIMME THE HOT SAUCE! 🌶️",
+  "PUT IT IN THE BOOK!",
+  // Austin Carr
+  "And he throws the HAMMA DOWN! 🔨",
+  "Get that WEAK STUFF outta here!",
+  "DEEP IN THE Q! 🏟️",
+  // Marv Albert
+  "YES! And it counts! 🙌",
+  "A SPECTACULAR move!",
+  // Bill Walton
+  "THROW IT DOWN, BIG MAN! 💪",
+  "That is a TRAVESTY!",
+  // Extra broadcast flavor
+  "FROM DOWNTOWN! 🏀",
+  "Nothing but the BOTTOM OF THE NET! 🌊",
+  "He POSTERIZED him! 😱",
+  "Stepback three… BANG! 💥",
+  "He is IN THE ZONE tonight!",
+  "FACIAL! 😤",
+  "The DAGGER! 🗡️",
+  "From the PARKING LOT! 🚗",
+  "IT'S RAINING THREES! ☔",
+  "Alley-oop off the GLASS! 🚀",
   "Pump fake… AND ONE! 🙌",
-  "Breaking ankles in traffic…",
-  "Shimmy! 🕺",
-  "Alley-oop! 🚀",
-  "Stepback three… BANG!",
-  "In the zone rn fr fr 🔥",
-  "Tweener pass! 🏀",
-  "Hesi! Got 'em…",
-  "Spin move to the rack!",
-  "Put 'em on a poster 😤",
-  "Cooking the defense…",
-  "Pull-up mid… off the glass!",
   "No look pass! 👀",
-  "Back-to-back buckets!",
-  "Fadeaway… DRILLED IT! 💥",
-  "Getting buckets quietly 🤫",
-  "Floater over the big… GOOD!",
-  "They fouled him AGAIN 😭",
   "Triple-double loading… 📊",
+  "Getting buckets QUIETLY 🤫",
 ];
 
 var _hoopTimer   = null;
@@ -613,7 +606,7 @@ function submitQuery() {
   Object.keys(charts).forEach(function(k) { charts[k].destroy(); });
   charts = {};
   setLoading(true);
-  document.getElementById('progress-steps').innerHTML = '';
+  document.getElementById('invalid-msg').innerHTML = '';
   document.getElementById('results').innerHTML = '';
   document.getElementById('results').classList.remove('visible');
   document.getElementById('progress-panel').classList.add('active');
@@ -626,7 +619,11 @@ function submitQuery() {
     body: JSON.stringify({ query: query })
   }).then(function(r) { return r.json(); })
     .then(function(d) { listenStream(d.job_id); })
-    .catch(function(e) { addStep('x', 'Error: ' + e.message, false); setLoading(false); });
+    .catch(function(e) {
+      document.getElementById('results').innerHTML = '<div class="error-box">Error: ' + e.message + '</div>';
+      document.getElementById('results').classList.add('visible');
+      setLoading(false);
+    });
 }
 
 document.getElementById('query-input').addEventListener('keydown', function(e) {
@@ -644,15 +641,11 @@ function listenStream(jobId) {
 }
 
 function handleEvent(type, data) {
-  if (type === 'thinking' || type === 'message') { addStep('>', data, true); }
-  else if (type === 'tool_start') { addStep('*', data, true); }
-  else if (type === 'tool_result') { addStep('+', data, false); }
-  else if (type === 'result') {
+  if (type === 'result') {
     try {
       var parsed = JSON.parse(data);
       if (parsed.type === 'invalid') {
         // Show inline in the progress panel — no cards rendered
-        var pp = document.getElementById('progress-panel');
         var invalidEl = document.createElement('div');
         invalidEl.style.cssText = 'margin-top:14px;padding:12px 16px;border-radius:8px;'
           + 'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);'
@@ -664,7 +657,7 @@ function handleEvent(type, data) {
           + '<div style="font-size:.82rem;color:var(--fg-soft);line-height:1.5">'
           + (parsed.reason || 'These players have never faced each other as opponents.') + '</div>'
           + '</div>';
-        document.getElementById('progress-steps').appendChild(invalidEl);
+        document.getElementById('invalid-msg').appendChild(invalidEl);
         setLoading(false);
       } else {
         renderResults(parsed);

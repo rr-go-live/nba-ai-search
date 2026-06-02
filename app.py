@@ -27,6 +27,8 @@ import os
 import socket
 import threading
 import uuid
+
+import requests
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -317,6 +319,31 @@ def h2h_matrix():
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok", "jobs": len(JOBS)})
+
+
+@app.route("/api/debug/ip")
+def debug_ip():
+    """
+    debug_ip
+    --------
+    Returns the server's outbound IP and geo info from ipinfo.io.
+    Used to diagnose Render geo-restriction issues with the Gemini API.
+    Remove this endpoint once the geo issue is resolved.
+
+    Returns:
+        JSON: ip, city, region, country, org from ipinfo.io
+    """
+    try:
+        info = requests.get("https://ipinfo.io/json", timeout=5).json()
+        return jsonify({
+            "ip":      info.get("ip"),
+            "city":    info.get("city"),
+            "region":  info.get("region"),
+            "country": info.get("country"),
+            "org":     info.get("org"),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/usage_report")

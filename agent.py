@@ -18,14 +18,19 @@ QUERY INTELLIGENCE (system prompt covers):
 
 import json
 import logging
+import os
 import re
 import time
 from typing import Callable
 
 from google import genai
 from google.genai import types
+from google.oauth2 import service_account
 
-from config import GEMINI_MODEL, MAX_AGENT_ITERS, AGENT_MAX_TOKENS, YEAR_TO_SEASON, DEFAULT_SEASON
+from config import (
+    GEMINI_MODEL, MAX_AGENT_ITERS, AGENT_MAX_TOKENS,
+    VERTEX_LOCATION_DEFAULT, YEAR_TO_SEASON, DEFAULT_SEASON,
+)
 from tools import TOOL_DEFINITIONS, execute_tool
 import nba_stats_client as nba
 
@@ -841,11 +846,92 @@ def _parse_last_n_query(query: str) -> dict | None:
 # Agent
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _build_vertex_credentials():
+    """
+    _build_vertex_credentials
+    -------------------------
+    Resolves Google Cloud credentials for Vertex AI from the environment.
+
+    Tries two sources in order:
+      1. GOOGLE_APPLICATION_CREDENTIALS_JSON — the full JSON content of a service
+         account key, pasted directly as an env var. Best for cloud platforms like
+         Render where writing files to disk is not possible.
+      2. Application Default Credentials (ADC) — used automatically when neither
+         of the above is set. Works locally after running:
+         `gcloud auth application-default login`
+
+    Returns:
+        google.oauth2.service_account.Credentials | None:
+            Explicit credentials if GOOGLE_APPLICATION_CREDENTIALS_JSON is set,
+            otherwise None (the SDK will use ADC automatically).
+    """
+    creds_json_str = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+    if not creds_json_str:
+        return None
+
+    try:
+        creds_dict = json.loads(creds_json_str)
+        credentials = service_account.Credentials.from_service_account_info(
+            creds_dict,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+        logger.info("Vertex AI: loaded credentials from GOOGLE_APPLICATION_CREDENTIALS_JSON")
+        return credentials
+    except Exception as e:
+        logger.error(f"Failed to parse GOOGLE_APPLICATION_CREDENTIALS_JSON: {e}")
+        raise
+
+
 class NBAStatsAgent:
     def __init__(self):
-        # Reads GOOGLE_API_KEY from environment automatically.
-        self.client = genai.Client()
-        logger.info(f"NBAStatsAgent initialized ({GEMINI_MODEL})")
+        """
+        NBAStatsAgent.__init__
+        ----------------------
+        Initialises the Gemini client. Auto-selects backend based on env vars:
+
+        Vertex AI (when GOOGLE_CLOUD_PROJECT is set):
+          - Works in ALL geographic regions — bypasses AI Studio geo-restrictions.
+          - Requires a GCP project with the Vertex AI API enabled.
+          - Auth (pick one):
+              Local:  run `gcloud auth application-default login` once
+              Render: set GOOGLE_APPLICATION_CREDENTIALS_JSON to the full
+                      contents of a service account key JSON file
+
+        AI Studio (fallback when GOOGLE_CLOUD_PROJECT is not set):
+          - Free tier, no billing required.
+          - Geo-restricted — not available in all countries.
+          - Requires GOOGLE_API_KEY env var.
+
+        Required env vars for Vertex AI:
+            GOOGLE_CLOUD_PROJECT    — GCP project ID
+            GOOGLE_CLOUD_LOCATION   — region, e.g. us-central1 (optional, has default)
+            GOOGLE_APPLICATION_CREDENTIALS_JSON — service account key JSON (Render only)
+        """
+        gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+
+        if gcp_project:
+            gcp_location  = os.environ.get("GOOGLE_CLOUD_LOCATION", VERTEX_LOCATION_DEFAULT)
+            credentials   = _build_vertex_credentials()
+
+            client_kwargs = dict(
+                vertexai=True,
+                project=gcp_project,
+                location=gcp_location,
+            )
+            if credentials:
+                client_kwargs["credentials"] = credentials
+
+            self.client = genai.Client(**client_kwargs)
+            auth_method = "service account JSON" if credentials else "Application Default Credentials"
+            logger.info(
+                f"NBAStatsAgent initialized via Vertex AI "
+                f"(project={gcp_project}, location={gcp_location}, "
+                f"auth={auth_method}, model={GEMINI_MODEL})"
+            )
+        else:
+            # AI Studio — GOOGLE_API_KEY is picked up from the environment automatically.
+            self.client = genai.Client()
+            logger.info(f"NBAStatsAgent initialized via AI Studio ({GEMINI_MODEL})")
 
     def _run_last_n_direct(
         self,

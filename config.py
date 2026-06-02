@@ -36,15 +36,25 @@ for _y in range(MIN_YEAR, MAX_YEAR + 1):
     YEAR_TO_SEASON[str(_y + 1)]  = _s   # end year    e.g. "2018"
 
 # ── Gemini agent ──────────────────────────────────────────────────────────────
-# Gemini 2.5 Flash — free tier via Google AI Studio (no billing required).
-# Get a key at: https://aistudio.google.com/apikey
-# Set env var:  GOOGLE_API_KEY=<your key>
+# Two supported backends — auto-detected from environment variables:
 #
-# gemini-2.5-flash: 20 req/day free tier. Add billing to unlock higher limits.
-# Swap to gemini-2.0-flash for 1500 req/day free (deprecated EOL June 2026).
-GEMINI_MODEL     = "gemini-2.5-flash"
-MAX_AGENT_ITERS  = 12
-AGENT_MAX_TOKENS = 16384
+# 1. Google AI Studio (default, free tier)
+#    Geo-restricted: not available in all countries.
+#    Set env var: GOOGLE_API_KEY=<key from https://aistudio.google.com/apikey>
+#
+# 2. Vertex AI (globally available, requires GCP project + billing)
+#    Bypasses geo-restrictions. Uses Application Default Credentials (ADC).
+#    Local setup:  gcloud auth application-default login
+#    Render setup: set GOOGLE_APPLICATION_CREDENTIALS to a service account JSON.
+#    Set env vars: GOOGLE_CLOUD_PROJECT=<your-gcp-project-id>
+#                  GOOGLE_CLOUD_LOCATION=us-central1   (optional, defaults below)
+#
+# If GOOGLE_CLOUD_PROJECT is set, Vertex AI is used automatically.
+# Otherwise falls back to AI Studio via GOOGLE_API_KEY.
+GEMINI_MODEL            = "gemini-2.5-flash"
+VERTEX_LOCATION_DEFAULT = "us-central1"
+MAX_AGENT_ITERS         = 12
+AGENT_MAX_TOKENS        = 16384
 
 # ── Flask ─────────────────────────────────────────────────────────────────────
 # PORT env var lets you override without touching code (e.g. PORT=8080 python3 app.py).
